@@ -1,26 +1,69 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from scipy.io import savemat, loadmat
 
-from typing import List, Dict, Any, Collection
+from typing import List, Collection, NamedTuple
 
 
-def segment_roi(frame, mesh_points):
-    img_h, img_w = frame.shape[:2]
+def segment_roi(img: np.ndarray, mesh_points: List[np.ndarray]) -> np.ndarray:
+    """
+    Segments ROI out of an image according to given mesh_points and returns an image of the isolated ROI.
+    The centroid of the ROI is oriented at the center of the image.
+
+    :param img: An image containing one ROI represented as a numpy ndarray.
+    :param mesh_points: List containing ndarrays of 2d coordinates of the mesh_points of the ROI
+    :return: np.ndarray: An image represented as a numpy ndarray with all pixels blackened except the ROI
+    """
+    img_h, img_w = img.shape[:2]
     mask_face = np.zeros((img_h, img_w), dtype=np.uint8)
 
-    frame_roi = frame.copy()
+    frame_roi = img.copy()
     mask_roi = mask_face.copy()
     cv2.fillPoly(mask_roi, mesh_points, (255, 255, 255, cv2.LINE_AA))
     output_roi = cv2.copyTo(frame_roi, mask_roi)
 
-    calc_multiple_centroids(output_roi)
+    cX, cY = calc_centroids(output_roi)
 
     return output_roi
 
 
-def get_bounding_box(img, results):
+def resize_roi(img: np.ndarray, mesh_points: List[np.ndarray]) -> np.ndarray:
+    """
+    Processes an image and returns a resized image with a dimension of 36x36 pixels.
+    The centroid of the ROI is oriented at the center of the resized image.
+
+    :param img: An image containing one ROI represented as a numpy ndarray.
+    :param mesh_points: List containing ndarrays of 2d coordinates of the mesh_points of the ROI
+    :return: np.ndarray: resized image with a dimension 36x36
+    """
+
+    x_min = mesh_points[0][:,0].min()
+    y_min = mesh_points[0][:,1].min()
+    x_max = mesh_points[0][:,0].max()
+    y_max = mesh_points[0][:,1].max()
+
+    distance_max = max(x_max-x_min, y_max-y_min)
+
+    cX, cY = calc_centroids(img)
+
+    # crop frame to square bounding box, centered at centroid
+    cropped_img = img[int(cY - distance_max/2):int(cY + distance_max/2), int(cX - distance_max/2):int(cX + distance_max/2)]
+
+    # ToDo: untersuche die Auswirkung von verschiedenen Interpolationen (INTER_AREA, INTER_CUBIC, INTER_LINEAR)
+    resized_image = cv2.resize(cropped_img, (36, 36))
+
+    return resized_image
+
+
+def get_bounding_box_coordinates(img: np.ndarray, results: NamedTuple) -> (int, int, int, int):
+    """
+    Processes an image and returns the minimum and maximum x and y coordinates of the bounding box of detected face.
+    The bounding box is determined from the minimum and maximum occurring x and y values of all mediapipe landmarks in the face.
+
+    :param img: An image represented as a numpy ndarray.
+    :param results: A NamedTuple object with a "multi_face_landmarks" field that contains the face landmarks on each detected face.
+    :return: x_min, y_min, x_max, y_max: minimum and maximum coordinates of face bounding box as integers
+    """
     for face_landmarks in results.multi_face_landmarks:
         img_h, img_w = img.shape[0:2]
         x_min = img_w
@@ -40,63 +83,19 @@ def get_bounding_box(img, results):
         # draw bounding box
         # cv2.rectangle(img, (x_min, y_min), (x_max, y_max), (255, 255, 255), 2)
 
-        # crop frame to bounding box
-        # cropped_img = img[y_min-10:y_max+10, x_min-10:x_max+10]
-
         return x_min, y_min, x_max, y_max
 
 
-def get_roi_bounding_box(img, mesh_points, margin=0):
-    x_min = mesh_points[0][:,0].min()
-    y_min = mesh_points[0][:,1].min()
-    x_max = mesh_points[0][:,0].max()
-    y_max = mesh_points[0][:,1].max()
-
-    distance_max = max(x_max-x_min, y_max-y_min)
-
-    cX, cY = calc_centroids(img)
-
-    # crop frame to square bounding box, centered at centroid
-    cropped_img = img[int(cY - distance_max/2 - margin):int(cY + distance_max/2 + margin), int(cX - distance_max/2 - margin):int(cX + distance_max/2 + margin)]
-
-    resized_image = cv2.resize(cropped_img, (36, 36))
-
-    return resized_image
-
-
-def calc_centroids(img):
+def calc_centroids(img: np.ndarray) -> (int, int):
     """
-    source: https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
+    Calculate centroid of each ROIs in given image and the centroid in between the calculated centroids
+    Based on: https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
 
-    :param img:
-    :return:
+    :param img: mask image containing a single or multiple ROIs
+    :return: int, int: 2d coordinates of centroid inside a single ROI or of the centroid in between multiple ROIs
     """
     # convert image to grayscale image
     gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # calculate moments of binary image
-    M = cv2.moments(gray_image)
-
-    # calculate x,y coordinate of center
-    if M["m00"] != 0:
-        cX = int(M["m10"] / M["m00"])
-        cY = int(M["m01"] / M["m00"])
-    else:
-        cX, cY = 0, 0
-
-    return cX, cY
-
-
-def calc_multiple_centroids(img):
-    """
-    source: https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
-
-    :param img:
-    :return:
-    """
-    # convert image to grayscale image
-    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
     centroid_list = []
 
     # find contours in the binary image
@@ -117,14 +116,60 @@ def calc_multiple_centroids(img):
         cv2.circle(img, (cX, cY), 1, (0, 255, 0), -1)
 
     # calculate centroid between multiple rois of total face
-    x_coords = [p[0] for p in centroid_list]
-    y_coords = [p[1] for p in centroid_list]
-    _len = len(centroid_list)
-    centroid_x = int(sum(x_coords) / _len)
-    centroid_y = int(sum(y_coords) / _len)
-    cv2.circle(img, (centroid_x, centroid_y), 1, (0, 255, 0), -1)
+    if len(centroid_list) > 1:
+        x_coords = [p[0] for p in centroid_list]
+        y_coords = [p[1] for p in centroid_list]
+        _len = len(centroid_list)
+        centroid_x = int(sum(x_coords) / _len)
+        centroid_y = int(sum(y_coords) / _len)
+        cv2.circle(img, (centroid_x, centroid_y), 1, (0, 255, 0), -1)
 
-    return centroid_x, centroid_y
+        return centroid_x, centroid_y
+    else:
+        return cX, cY
+
+
+def moving_average(list_: List[tuple], window_size: int) -> (int, int):
+    """
+    Apply moving average filter with provided window_size to provided list.
+    The averaging is calculated among all first respectively second elements in the tuples inside the window_size.
+
+    :param list_: list of 2D-tuples containing elements to be averaged
+    :param window_size: specifies the number of elements in the list that are considered in the calculation of the averaging
+    :return: int, int: Integer values of averaged elements in list
+    """
+    x = np.array([i[0] for i in list_])
+    y = np.array([i[1] for i in list_])
+
+    mov_avg_x = np.convolve(x, np.ones(window_size), 'valid') / window_size
+    mov_avg_y = np.convolve(y, np.ones(window_size), 'valid') / window_size
+
+    return int(mov_avg_x[-1]), int(mov_avg_y[-1])
+
+
+'''
+def calc_single_centroids(img: np.ndarray) -> (int, int):
+    """
+    source: https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
+
+    :param img:
+    :return:
+    """
+    # convert image to grayscale image
+    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # calculate moments of binary image
+    M = cv2.moments(gray_image)
+
+    # calculate x,y coordinate of center
+    if M["m00"] != 0:
+        cX = int(M["m10"] / M["m00"])
+        cY = int(M["m01"] / M["m00"])
+    else:
+        cX, cY = 0, 0
+
+    return cX, cY
+'''
 
 
 def generate_contour_points(flexible_list: List, landmarks: Collection, img_w: int, img_h: int) -> np.ndarray:
@@ -275,51 +320,3 @@ def plot_rgbt_signals(rgbt_signals, fs, face_regions_names=None):
     if face_regions_names is not None:
         axs[2].legend(face_regions_names)
     axs[2].set_xlabel('time / s')
-
-
-def save_ppg_data_mat(output_mat_file, rgbts: List[np.ndarray], ppgs: List[np.ndarray], outconfig: Dict[str, Any], avg_hr_bpm=None, create_mask_image=True):
-    if create_mask_image:
-        _rgb = outconfig.get('rgb0', None)
-        _masks = outconfig.get('masks0', None)
-        if _rgb is not None and _masks is not None:
-            vis_regions = get_contour_image(_rgb, _masks)
-            outconfig["vis_regions"] = vis_regions
-
-    out_dic = {'rgbts': rgbts, 'ppgis': ppgs, "config": outconfig, "avg_hr_bpm": avg_hr_bpm}
-
-    def replace_none(data):
-        for k, v in data.items() if isinstance(data, dict) else enumerate(data):
-            if v is None:
-                data[k] = ''
-            elif isinstance(v, (dict, list)):
-                replace_none(v)
-
-    replace_none(out_dic)
-    savemat(output_mat_file, out_dic)
-
-
-def load_ppg_data_mat(input_mat_file):
-    in_dict = loadmat(input_mat_file, simplify_cells=True)
-    rgbts = in_dict["rgbts"]
-    ppgs = in_dict.get("ppgis", None)
-    if len(rgbts.shape) == 3:
-        rgbts = [rgbts[_i].reshape(-1) for _i in range(rgbts.shape[0])]
-        if ppgs is not None:
-            ppgs = [ppgs[_i].reshape(-1) for _i in range(ppgs.shape[0])]
-    fs = in_dict["config"]["fs"]
-    config = in_dict["config"]
-    return rgbts, ppgs, fs, config
-
-
-def is_gaps_in_files(folder, number_range=[9, -4], verbose=1):
-    import os
-    import numpy as np
-    files = os.listdir(folder)
-    files_short = [f[number_range[0]:number_range[1]] for f in files]
-    files_short.sort
-    file_nums = [int(f) for f in files_short]
-    file_arr = np.array(file_nums)
-    indices = np.argwhere(np.diff(file_arr) > 1)
-    if verbose > 0:
-        print(indices)
-    return len(indices) > 0
