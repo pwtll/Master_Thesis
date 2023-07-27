@@ -6,6 +6,20 @@ from scipy.io import savemat, loadmat
 from typing import List, Dict, Any, Collection
 
 
+def segment_roi(frame, mesh_points):
+    img_h, img_w = frame.shape[:2]
+    mask_face = np.zeros((img_h, img_w), dtype=np.uint8)
+
+    frame_roi = frame.copy()
+    mask_roi = mask_face.copy()
+    cv2.fillPoly(mask_roi, mesh_points, (255, 255, 255, cv2.LINE_AA))
+    output_roi = cv2.copyTo(frame_roi, mask_roi)
+
+    calc_multiple_centroids(output_roi)
+
+    return output_roi
+
+
 def get_bounding_box(img, results):
     for face_landmarks in results.multi_face_landmarks:
         img_h, img_w = img.shape[0:2]
@@ -38,17 +52,79 @@ def get_roi_bounding_box(img, mesh_points, margin=0):
     x_max = mesh_points[0][:,0].max()
     y_max = mesh_points[0][:,1].max()
 
-    # draw bounding box
-    # cv2.rectangle(img, (x_min, y_min), (x_max, y_max), (255, 255, 255), 2)
+    distance_max = max(x_max-x_min, y_max-y_min)
 
-    # crop frame to bounding box
-    cropped_img = img[y_min - margin:y_max + margin, x_min - margin:x_max + margin]
+    cX, cY = calc_centroids(img)
 
-    # resize window
-    height, width = cropped_img.shape[:2]
+    # crop frame to square bounding box, centered at centroid
+    cropped_img = img[int(cY - distance_max/2 - margin):int(cY + distance_max/2 + margin), int(cX - distance_max/2 - margin):int(cX + distance_max/2 + margin)]
+
+    resized_image = cv2.resize(cropped_img, (36, 36))
+
+    return resized_image
 
 
-    return cropped_img
+def calc_centroids(img):
+    """
+    source: https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
+
+    :param img:
+    :return:
+    """
+    # convert image to grayscale image
+    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # calculate moments of binary image
+    M = cv2.moments(gray_image)
+
+    # calculate x,y coordinate of center
+    if M["m00"] != 0:
+        cX = int(M["m10"] / M["m00"])
+        cY = int(M["m01"] / M["m00"])
+    else:
+        cX, cY = 0, 0
+
+    return cX, cY
+
+
+def calc_multiple_centroids(img):
+    """
+    source: https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
+
+    :param img:
+    :return:
+    """
+    # convert image to grayscale image
+    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    centroid_list = []
+
+    # find contours in the binary image
+    contours, hierarchy = cv2.findContours(gray_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    for c in contours:
+        # calculate moments for each contour
+        M = cv2.moments(c)
+
+        # calculate x,y coordinate of center
+        if M["m00"] != 0:
+            cX = int(M["m10"] / M["m00"])
+            cY = int(M["m01"] / M["m00"])
+        else:
+            cX, cY = 0, 0
+
+        centroid_list.append((cX, cY))
+
+        cv2.circle(img, (cX, cY), 1, (0, 255, 0), -1)
+
+    # calculate centroid between multiple rois of total face
+    x_coords = [p[0] for p in centroid_list]
+    y_coords = [p[1] for p in centroid_list]
+    _len = len(centroid_list)
+    centroid_x = int(sum(x_coords) / _len)
+    centroid_y = int(sum(y_coords) / _len)
+    cv2.circle(img, (centroid_x, centroid_y), 1, (0, 255, 0), -1)
+
+    return centroid_x, centroid_y
 
 
 def generate_contour_points(flexible_list: List, landmarks: Collection, img_w: int, img_h: int) -> np.ndarray:
@@ -139,7 +215,7 @@ def plot_contours(rgb_frame: np.ndarray, masks: List[np.ndarray]):
 
 # up to 15 overlapping masks
 def stack_masks(masks: List[np.ndarray]) -> np.ndarray:
-    """Produces an image containing all masks layerd in bytes.
+    """Produces an image containing all masks layers in bytes.
     Max number of masks is 15 because 16 bit image is used
 
     Args:

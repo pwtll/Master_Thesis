@@ -38,12 +38,11 @@ with mp_face_mesh.FaceMesh(
         mask_mouth = np.zeros((img_h, img_w), dtype=np.uint8)
         mask_eyebrows = np.zeros((img_h, img_w), dtype=np.uint8)
 
-
-
         if results.multi_face_landmarks:
             mesh_points = np.array([np.multiply([p.x, p.y], [img_w, img_h]).astype(int)
                                     for p in results.multi_face_landmarks[0].landmark])
 
+            # define mesh points of each ROI
             mesh_points_forehead = [mesh_points[DEFINITION_FACEMASK.FOREHEAD_list]]
             mesh_points_left_cheek = [helper.generate_contour_points(flexible_list=DEFINITION_FACEMASK.LEFT_CHEEK_LIST,
                                                                      landmarks=results.multi_face_landmarks[0].landmark,
@@ -52,25 +51,13 @@ with mp_face_mesh.FaceMesh(
                                                                       landmarks=results.multi_face_landmarks[0].landmark,
                                                                       img_w=img_w, img_h=img_h)]
 
-
-            # isolate single ROIs
+            # isolate single ROIs from frame
             # ROI forehead
-            frame_forehead = frame.copy()
-            mask_forehead = mask_face.copy()
-            cv.fillPoly(mask_forehead, mesh_points_forehead, (255, 255, 255, cv.LINE_AA))
-            output_roi_forehead = cv.copyTo(frame_forehead, mask_forehead)
-
+            output_roi_forehead = helper.segment_roi(frame, mesh_points_forehead)
             # ROI left cheek
-            frame_left_cheek = frame.copy()
-            mask_left_cheek = mask_face.copy()
-            cv.fillPoly(mask_left_cheek, mesh_points_left_cheek, (255, 255, 255, cv.LINE_AA))
-            output_roi_left_cheek = cv.copyTo(frame_left_cheek, mask_left_cheek)
-
+            output_roi_left_cheek = helper.segment_roi(frame, mesh_points_left_cheek)
             # ROI right cheek
-            frame_right_cheek = frame.copy()
-            mask_right_cheek = mask_face.copy()
-            cv.fillPoly(mask_right_cheek, mesh_points_right_cheek, (255, 255, 255, cv.LINE_AA))
-            output_roi_right_cheek = cv.copyTo(frame_right_cheek, mask_right_cheek)
+            output_roi_right_cheek = helper.segment_roi(frame, mesh_points_right_cheek)
 
             # ROIs of total face
             # drawing on the mask
@@ -84,9 +71,17 @@ with mp_face_mesh.FaceMesh(
             cv.polylines(frame, mesh_points_left_cheek, True, (0, 255, 0), 1, cv.LINE_AA)
             cv.polylines(frame, mesh_points_right_cheek, True, (0, 255, 0), 1, cv.LINE_AA)
 
-            # crop frame to face region
+            # crop frame to square bounding box, centered at centroid between all ROIs
             x_min, y_min, x_max, y_max = helper.get_bounding_box(output_roi_face, results)
-            output_roi_face = output_roi_face[y_min - 10:y_max + 10, x_min - 10:x_max + 10]
+            distance_max = max(x_max - x_min, y_max - y_min)
+            cX, cY = helper.calc_multiple_centroids(output_roi_face)
+            # crop frame to square bounding box
+            output_roi_face = output_roi_face[int(cY - distance_max / 2):int(cY + distance_max / 2),
+                          int(cX - distance_max / 2):int(cX + distance_max / 2)]
+
+            # ToDo: untersuche die Auswirkung von verschiedenen Interpolationen (INTER_AREA, INTER_CUBIC, INTER_LINEAR)
+            output_roi_face = cv.resize(output_roi_face, (36, 36))
+
             # draw bounding box
             cv.rectangle(frame, (x_min, y_min), (x_max, y_max), (255, 255, 255), 1)
 
@@ -95,16 +90,14 @@ with mp_face_mesh.FaceMesh(
             output_roi_left_cheek = helper.get_roi_bounding_box(output_roi_left_cheek, mesh_points_left_cheek)
             output_roi_right_cheek = helper.get_roi_bounding_box(output_roi_right_cheek, mesh_points_right_cheek)
 
-            # resize window
-            # cv.namedWindow("ROI right cheek", cv.WINDOW_NORMAL)
-            # height, width = output_roi_right_cheek.shape[:2]
-            # cv.resizeWindow("ROI right cheek", width, height)
-
-            cv.imshow('img', frame)
-            cv.imshow('ROI face', output_roi_face)
-            cv.imshow('ROI forehead', output_roi_forehead)
-            cv.imshow('ROI left cheek', output_roi_left_cheek)
-            cv.imshow('ROI right cheek', output_roi_right_cheek)
+            try:
+                cv.imshow('img', frame)
+                cv.imshow('ROI face', output_roi_face)
+                cv.imshow('ROI forehead', output_roi_forehead)
+                cv.imshow('ROI left cheek', output_roi_left_cheek)
+                cv.imshow('ROI right cheek', output_roi_right_cheek)
+            except:
+                pass
 
         key = cv.waitKey(1)
         if key == ord('q'):
