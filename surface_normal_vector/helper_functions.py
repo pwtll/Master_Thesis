@@ -1,5 +1,4 @@
 import os.path
-import time
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcol
@@ -61,20 +60,16 @@ def calculate_angle_between_vectors(vector1, vector2):
     return math.degrees(math.acos(cos_theta))
 
 
-def draw_angle_heatmap(image, landmarks, landmark_list, threshold=90):
+def calculate_angle_heatmap(landmarks, landmark_list):
     """
     Calculates the angle between the surface normal vector of a given triangle (defined by three landmarks) and the camera axis vector.
     The camera axis vector is assumed to be [0, 0, -1].
-    If the angle is below a specified threshold, the function draws a heatmap on the provided image to visualize the angle.
-    The heatmap is drawn over the triangle formed by the three landmarks, and the color of the heatmap represents the angle's magnitude.
+    The function returns the calculated reflectance angle (in degrees) between the surface normal vector and the camera axis vector.
 
-    :param image: (numpy array): A 3D NumPy array representing the input image where the heatmap will be drawn.
     :param landmarks: (dict): A dictionary where the keys are landmark indices, and the values are 3D coordinates (numpy arrays or lists)
                               representing the landmarks' positions in space.
     :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
                                   These indices must correspond to keys present in the landmarks dictionary.
-    :param threshold: (float, optional): The threshold angle in degrees. If the calculated angle is below this threshold,
-                                        the heatmap will be drawn on the image. Default value is 90 degrees.
     :return: angle_degrees (float): The angle (in degrees) between the surface normal vector and the camera axis vector.
     """
 
@@ -90,6 +85,27 @@ def draw_angle_heatmap(image, landmarks, landmark_list, threshold=90):
     if angle_degrees > 90:
         angle_degrees = 180 - angle_degrees
 
+    return angle_degrees
+
+
+def show_reflectance_angle_tesselation(image, landmarks, landmark_list, angle_degrees, threshold=90):
+    """
+    Visualizes a heatmap of the reflectance angle for a given triangle in a tesselation.
+    If the reflectance angle is below a specified threshold, the function draws a heatmap on the provided image to visualize the angle.
+    The reflectance angle of a given triangle is represented as a color-coded heatmap drawn on the provided image,
+    where the color of the heatmap represents the angle's magnitude.
+
+    :param image: (numpy array): A 3D NumPy array representing the input image where the heatmap will be drawn.
+    :param landmarks: (dict): A dictionary where the keys are landmark indices, and the values are 3D coordinates (numpy arrays or lists)
+                              representing the landmarks' positions in space.
+    :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
+                                  These indices must correspond to keys present in the landmarks dictionary.
+    :param angle_degrees: (float): The reflectance angle (in degrees) between the surface normal vector and the camera axis vector for the given triangle.
+    :param threshold: (float, optional): The threshold angle in degrees. If the calculated angle is below this threshold,
+                                        the heatmap will be drawn on the image. Default value is 90 degrees.
+    :return: The function does not return any value.  If the calculated reflectance angle is below the threshold, the heatmap will be drawn on the image.
+    """
+
     if angle_degrees < threshold:
         # Extract the coordinates of the three landmarks of the triangle
         triangle_coords = get_triangle_coords(image, landmarks, landmark_list)
@@ -98,13 +114,12 @@ def draw_angle_heatmap(image, landmarks, landmark_list, threshold=90):
         angle_range = 90
         red = 255 * angle_degrees / angle_range
         blue = 255 * (1 - (angle_degrees / angle_range))
-        cv2.drawContours(image, [triangle_coords], 0, (red, 0, blue), -1)
 
         # alternative colorization
         # r, g, b = rgb(angle_degrees)
         # cv2.drawContours(image, [triangle_coords], 0, (b, g, r), -1)
 
-    return angle_degrees
+        cv2.drawContours(image, [triangle_coords], 0, (red, 0, blue), -1)
 
 
 def rgb(value, minimum=0, maximum=90):
@@ -276,6 +291,7 @@ def draw_tesselation_heatmap(tesselation_mean_angles, uv_map):
     H_new, W_new = 512, 512
     keypoints_uv = np.array([(W_new * x, H_new * y) for x, y in uv_map], dtype=np.float32)
     image = np.zeros((H_new, W_new, 3), dtype=np.uint8)
+    image.fill(255)
 
     # Extract the uv-coordinates of the three landmarks of each triangle
     for triangle in FACE_MESH_TESSELATION:
@@ -348,23 +364,22 @@ def finalize(existing_aggregate):
         return mean, variance, sample_variance
 
 
-def pickle_dump_tesselation_angles(tesselation_mean_angles, filename='saved_dictionary.pkl'):
+def pickle_dump_tesselation_angles(tesselation_mean_angles, filepath='tesselation_angle_metrics_dict.pkl'):
     """
-    saves a dictionary containing tesselation mean angles to a pickle file.
+    Saves a dictionary containing tesselation mean angles to a pickle file.
     If a file with the specified filename already exists, the function appends a timestamp to the filename to avoid overwriting the existing file.
 
     :param tesselation_mean_angles: (dict): A dictionary containing the tesselation mean angles. The keys of the dictionary represent triangles
                                             (typically a string representation of vertex indices), and the values represent the mean angle of each triangle.
-    :param filename: (str, optional): The filename (including the extension) for the pickle file. If not provided, the default filename is 'saved_dictionary.pkl'.
-    :return: The function does not return any value. It saves the tesselation_mean_angles dictionary to a pickle file with the specified filename.
+    :param filepath: (str, optional): The filepath (including the filename with extension) for the pickle file. If not provided, the default filename is 'saved_dictionary.pkl'.
+    :return: The function does not return any value. It saves the tesselation_mean_angles dictionary to a pickle file in the specified filepath.
     """
-    if os.path.isfile(filename):
-        filename = time.strftime("%Y%m%d-%H%M%S") + '_' + filename
-    with open(filename, 'wb') as f:
+    # dump file in specified directory
+    with open(filepath, 'wb') as f:
         pickle.dump(tesselation_mean_angles, f)
 
 
-def plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map):
+def plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map, show_heatmap=True):
     """
     Visualizes a heatmap of the mean angles for each triangle in mediapipe's face tesselation using UV coordinates from the canonical face model.
     The function generates a heatmap using the draw_tesselation_heatmap function, converts it to an RGB image, and plots it.
@@ -378,6 +393,10 @@ def plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map):
     """
     mean_angle_heatmap_bgr = draw_tesselation_heatmap(tesselation_mean_angles, uv_map)
     mean_angle_heatmap_rgb = cv2.cvtColor(mean_angle_heatmap_bgr, cv2.COLOR_BGR2RGB)
+
+    plt.rcParams["figure.figsize"] = (5, 4)
+    plt.subplots_adjust(left=0, bottom=0.05, right=0.95, top=0.975, wspace=0.2, hspace=0.2)
+    plt.rcParams.update({"text.usetex": False, "font.family": "serif", "font.serif": "Charter"})
     imgplot = plt.imshow(mean_angle_heatmap_rgb)
 
     '''
@@ -425,10 +444,62 @@ def plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map):
     # v = np.append(v, max_angle)
 
     plt.colorbar(cpick, label="Mean angle (°)", ticks=v)
-    plt.show()
+    plt.axis('off')
+
+    if show_heatmap:
+        plt.show()
+
+    return imgplot
 
 
 '''
 def format_coord(x, y, z):
     return "text_string_made_from({:.2f},{:.2f},{:.2f})".format(x, y, z)
 '''
+
+
+def get_video_paths_in_folder(dir):
+    """
+    Scans a directory and its subdirectories to find all video files with the ".avi" file extension.
+    It returns a list containing the full paths of all the discovered video files.
+
+    :param dir: (str): The input string representing the directory path to be scanned for video files.
+    :return: video_paths (list): A list of full paths of video files (with the ".avi" extension) found in the specified directory and its subdirectories.
+    """
+
+    r = []
+    for root, dirs, files in os.walk(dir):
+        for name in files:
+            if name.endswith(".avi"):
+                r.append(os.path.join(root, name))
+                print(os.path.join(root, name))
+    return r
+
+
+def extract_output_folder(input_file_string):
+    """
+    takes an input file path string and extracts the relevant directory part of the path.
+    The function is specifically designed to handle file paths that contain a "Datasets" directory.
+    It normalizes the input path to handle different separators (e.g., '/' or '\'),
+    and extracts and preserves the dataset subfolder structure as the output folder path.
+
+    :param input_file_string: (str): The input string representing the file path.
+    :return: output_string (str): The output string representing the subfolder structure of the "Datasets" directory.
+    """
+
+    # Normalize the path to handle different separators (e.g., '/' or '\')
+    normalized_path = os.path.normpath(input_file_string)
+
+    # Split the path into directory components
+    path_components = normalized_path.split(os.path.sep)
+
+    # Find the index of the "Datasets" directory
+    datasets_index = path_components.index("Datasets")
+
+    # Extract the relevant part of the path
+    output_path_components = path_components[datasets_index + 1:-1]
+
+    # Join the components back to form the output string
+    output_string = os.path.join(*output_path_components) + "/"
+
+    return output_string
