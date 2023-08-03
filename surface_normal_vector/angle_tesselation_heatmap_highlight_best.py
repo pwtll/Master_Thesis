@@ -39,9 +39,12 @@ def main():
                     for triangle in FACE_MESH_TESSELATION:
                         # draw_landmarks(image, face_landmarks, triangle)
 
-                        # create angle heatmap
-                        angle_degrees = helper_functions.draw_angle_heatmap(image, landmarks, triangle, threshold=90)
+                        # calculate reflectance angle in degree
+                        angle_degrees = helper_functions.calculate_angle_heatmap(landmarks, triangle)
                         angle_dict.update({str(triangle): angle_degrees})
+
+                        # display angle heatmap
+                        helper_functions.show_reflectance_angle_tesselation(image, landmarks, triangle, angle_degrees, threshold=90)
 
                     # get mesh triangles with lowest angles
                     angles_list = sorted(list(angle_dict.values()))
