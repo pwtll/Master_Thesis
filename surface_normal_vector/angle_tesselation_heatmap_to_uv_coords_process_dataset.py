@@ -14,21 +14,7 @@ def main(video_file=None, show_heatmap=False):
     if video_file:
         cap = cv2.VideoCapture(video_file)
 
-        # ToDO: eigene Funktion
-        output_folder = helper_functions.extract_output_folder(video_file)
-        filename = 'tesselation_angle_metrics_dict.pkl'
-
-        # Check whether the specified path exists or not
-        if not os.path.exists(output_folder):
-            # Create a new directory
-            os.makedirs(output_folder, exist_ok=True)
-            print("Created: " + output_folder)
-
-        filepath = output_folder + filename
-
-        # if file already exists, appends a timestamp to the filename to avoid overwriting the existing file
-        if os.path.isfile(filepath):
-            filepath = output_folder + time.strftime("%Y%m%d-%H%M%S") + '_' + filename
+        filepath = helper_functions.get_destination_path(video_file)
     else:
         example_video = 0  # "angle_test_short.mp4"
         if example_video == 0:
@@ -105,6 +91,9 @@ def main(video_file=None, show_heatmap=False):
             mean_angle_heatmap_uv.figure.savefig(img_path_svg, dpi=600)
             mean_angle_heatmap_uv.figure.savefig(img_path_pdf, dpi=600)
             mean_angle_heatmap_uv.figure.savefig(img_path_png, dpi=600)
+
+            # clear the current figure for next iteration
+            helper_functions.plt.clf()
 
         # check if dictionary of reflectance angles is not empty. Occurs of no face is recognized by mediapipe
         if bool(tesselation_mean_angles):
