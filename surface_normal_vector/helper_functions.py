@@ -1,4 +1,5 @@
 import os.path
+import time
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcol
@@ -503,3 +504,31 @@ def extract_output_folder(input_file_string):
     output_string = os.path.join(*output_path_components) + "/"
 
     return output_string
+
+
+def get_destination_path(video_file):
+    """
+    Generates the destination path derived from the input video file path.
+    The function takes a video file path, extracts the subfolder structure of its "Datasets" directory and appends the specified filename.
+    If the file already exists, the function appends a timestamp to the filename, ensuring that the new file does not overwrite the existing one.
+
+    :param video_file: (str): The input string representing the file path of the video.
+    :return: filepath (str): The full destination path where the file with the specified filename should be saved.
+    """
+
+    output_folder = extract_output_folder(video_file)
+    filename = 'tesselation_angle_metrics_dict.pkl'
+
+    # Check whether the specified path exists or not
+    if not os.path.exists(output_folder):
+        # Create a new directory
+        os.makedirs(output_folder, exist_ok=True)
+        print("Created: " + output_folder)
+
+    filepath = output_folder + filename
+
+    # if file already exists, appends a timestamp to the filename to avoid overwriting the existing file
+    if os.path.isfile(filepath):
+        filepath = output_folder + time.strftime("%Y%m%d-%H%M%S") + '_' + filename
+
+    return filepath
