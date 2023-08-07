@@ -6,12 +6,16 @@ import numpy as np
 from roi_segmentation.DEFINITION_FACEMASK import FACE_MESH_TESSELATION
 import json
 import helper_functions
+from tqdm import tqdm
+import concurrent.futures
 
 
 def main(video_file=None, show_heatmap=False):
     mp_face_mesh = mp.solutions.face_mesh
 
     if video_file:
+        # print("Processing: " + video_file)
+
         cap = cv2.VideoCapture(video_file)
 
         filepath = helper_functions.get_destination_path(video_file)
@@ -123,12 +127,9 @@ if __name__ == "__main__":
 
         start_time_dataset = time.time()
 
-        for file in video_paths:
-            print("Processing: " + file)
-            start_time_video = time.time()
-            main(video_file=file, show_heatmap=False)
-            end_time_video = time.time()
-            print("Runtime: " + str(end_time_video-start_time_video))
+        # construct a pool of parallel processes for each CPU thread to reduce total computation time
+        with concurrent.futures.ProcessPoolExecutor() as procs:
+            list(tqdm(procs.map(main, [file for file in video_paths]), total=len(video_paths)))
 
         end_time_dataset = time.time()
-        print("Runtime for whole dataset: " + str(end_time_dataset - start_time_dataset))
+        print("Runtime for whole dataset in seconds: " + str(end_time_dataset - start_time_dataset))
