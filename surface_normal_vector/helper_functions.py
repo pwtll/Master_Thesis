@@ -71,7 +71,7 @@ def calculate_angle_heatmap(landmarks, landmark_list):
                               representing the landmarks' positions in space.
     :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
                                   These indices must correspond to keys present in the landmarks dictionary.
-    :return: angle_degrees (float): The angle (in degrees) between the surface normal vector and the camera axis vector.
+    :return: angle_degrees: (float): The angle (in degrees) between the surface normal vector and the camera axis vector.
     """
 
     # Calculate the surface normal vector for the surface
@@ -151,7 +151,7 @@ def draw_landmarks(image, face_landmarks, list_roi):
     :param image: (numpy array): A 2D or 3D NumPy array representing the input image on which the landmarks will be drawn.
     :param face_landmarks: (object): An object containing the face landmarks information, typically obtained using a facial landmark detection model or library.
     :param list_roi:(list): A list of landmark indices corresponding to the regions of interest (ROI) that need to be drawn on the image.
-    :return: (numpy array): A 3D NumPy array representing the input image with landmarks drawn.
+    :return: image: (numpy array): A 3D NumPy array representing the input image with landmarks drawn.
     """
 
     # Draw only the landmarks for the ROI list
@@ -174,7 +174,7 @@ def get_triangle_coords(image, landmarks, landmark_list):
                               the landmarks' positions in space.
     :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
                                   These indices must correspond to keys present in the 'landmarks' dictionary.
-    :return: (numpy array): A 2D NumPy array containing the 2D pixel coordinates of the three landmarks that define the triangle. The array has shape (3, 2).
+    :return: triangle_coords: (numpy array): A 2D NumPy array containing the 2D pixel coordinates of the three landmarks that define the triangle. The array has shape (3, 2).
     """
 
     # Extract the coordinates of the three landmarks of the triangle
@@ -201,7 +201,7 @@ def get_triangle_indices_from_angle(dict, val):
     :param dict: (dict): A dictionary containing information about different triangles, where the keys represent the vertices of each triangle,
                          and the values represent the angles between the surface normal vector and the camera axis.
     :param val: (any): The angle value associated with the triangle that you want to find the landmark indices for.
-    :return: (list): A list of three landmark indices representing the vertices of the triangle that matches the specified angle value (val) in the dictionary.
+    :return: triangle_landmarks_int: (list): A list of three landmark indices representing the vertices of the triangle that matches the specified angle value (val) in the dictionary.
     """
     triangle_landmarks_ = [k for k, v in dict.items() if v == val][0]
     triangle_landmarks = triangle_landmarks_.strip('][').split(', ')
@@ -284,7 +284,7 @@ def draw_tesselation_heatmap(tesselation_mean_angles, uv_map):
                                             and the values represent the mean reflectance angle of that triangle.
     :param uv_map: (list): A list of 2D coordinates (tuples) representing the UV coordinates of mediapipe's canonical face model.
                            Source of the uv_map: https://github.com/spite/FaceMeshFaceGeometry/blob/353ee557bec1c8b55a5e46daf785b57df819812c/js/geometry.js
-    :return: (numpy array): A 3D NumPy array representing the heatmap image.
+    :return: image: (numpy array): A 3D NumPy array representing the heatmap image.
                             The heatmap visualizes the mean reflectance angles of each triangle in the tesselation.
     """
 
@@ -465,27 +465,27 @@ def get_video_paths_in_folder(dir):
     It returns a list containing the full paths of all the discovered video files.
 
     :param dir: (str): The input string representing the directory path to be scanned for video files.
-    :return: video_paths (list): A list of full paths of video files (with the ".avi" or ".mp4" extension) found in the specified directory and its subdirectories.
+    :return: video_paths: (list): A list of full paths of video files (with the ".avi" or ".mp4" extension) found in the specified directory and its subdirectories.
     """
 
-    r = []
+    video_paths = []
     for root, dirs, files in os.walk(dir):
         for name in files:
             if name.endswith(".avi") or name.endswith(".mp4"):
-                r.append(os.path.join(root, name))
-                print(os.path.join(root, name))
-    return r
+                video_paths.append(os.path.join(root, name))
+                # print(os.path.join(root, name))
+    return video_paths
 
 
 def extract_output_folder(input_file_string):
     """
-    takes an input file path string and extracts the relevant directory part of the path.
+    Takes an input file path string of a dataset and extracts the subfolder structure of the path.
     The function is specifically designed to handle file paths that contain a "Datasets" directory.
     It normalizes the input path to handle different separators (e.g., '/' or '\'),
     and extracts and preserves the dataset subfolder structure as the output folder path.
 
     :param input_file_string: (str): The input string representing the file path.
-    :return: output_string (str): The output string representing the subfolder structure of the "Datasets" directory.
+    :return: output_string: (str): The output string representing the subfolder structure of the "Datasets" directory.
     """
 
     # Normalize the path to handle different separators (e.g., '/' or '\')
@@ -497,11 +497,14 @@ def extract_output_folder(input_file_string):
     # Find the index of the "Datasets" directory
     datasets_index = path_components.index("Datasets")
 
-    # Extract the relevant part of the path
+    # Extract the dataset structure of the path
     output_path_components = path_components[datasets_index + 1:-1]
 
+    # Extract the video filename
+    filename_video = path_components[-1].split('.')[0]
+
     # Join the components back to form the output string
-    output_string = os.path.join(*output_path_components) + "/"
+    output_string = os.path.join(*output_path_components) + "/" + filename_video + "/"
 
     return output_string
 
@@ -513,7 +516,7 @@ def get_destination_path(video_file):
     If the file already exists, the function appends a timestamp to the filename, ensuring that the new file does not overwrite the existing one.
 
     :param video_file: (str): The input string representing the file path of the video.
-    :return: filepath (str): The full destination path where the file with the specified filename should be saved.
+    :return: filepath: (str): The full destination path where the file with the specified filename should be saved.
     """
 
     output_folder = extract_output_folder(video_file)
@@ -523,7 +526,7 @@ def get_destination_path(video_file):
     if not os.path.exists(output_folder):
         # Create a new directory
         os.makedirs(output_folder, exist_ok=True)
-        print("Created: " + output_folder)
+        # print("Created: " + output_folder)  # ToDo: introduce boolean verbose argument
 
     filepath = output_folder + filename
 
