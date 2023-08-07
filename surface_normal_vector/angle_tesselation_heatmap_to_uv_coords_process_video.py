@@ -51,8 +51,11 @@ def main():
                     # Calculate angles between camera and surface normal vectors for whole face mesh tessellation and draw an angle heatmap
                     angle_dict = {}         # to save angle of each mesh triangle in a dict
                     for triangle in FACE_MESH_TESSELATION:
-                        # create angle heatmap
-                        angle_degrees = helper_functions.draw_angle_heatmap(image, landmark_coords_xyz, triangle, threshold=90)
+                        # calculate reflectance angle in degree
+                        angle_degrees = helper_functions.calculate_angle_heatmap(landmark_coords_xyz, triangle)
+
+                        # display angle heatmap
+                        helper_functions.show_reflectance_angle_tesselation(image, landmark_coords_xyz, triangle, angle_degrees, threshold=90)
 
                         # save angle of each tesselation triangle in a dictionary
                         angle_dict.update({str(triangle): angle_degrees})
@@ -74,7 +77,7 @@ def main():
             tesselation_angle_metrics[str(triangle)] = helper_functions.finalize(tesselation_angle_metrics[str(triangle)])
 
         # save tesselation_angle_metrics dictionary in a pickle file
-        helper_functions.pickle_dump_tesselation_angles(tesselation_angle_metrics, filename='saved_dictionary.pkl')
+        helper_functions.pickle_dump_tesselation_angles(tesselation_angle_metrics, filepath='saved_dictionary.pkl')
 
         # plot a heatmap of the mean reflectance angles of the face tesselation using UV coordinates
         helper_functions.plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map)
