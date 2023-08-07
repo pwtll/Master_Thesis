@@ -461,17 +461,17 @@ def format_coord(x, y, z):
 
 def get_video_paths_in_folder(dir):
     """
-    Scans a directory and its subdirectories to find all video files with the ".avi" file extension.
+    Scans a directory and its subdirectories to find all video files with the ".avi" or ".mp4" file extension.
     It returns a list containing the full paths of all the discovered video files.
 
     :param dir: (str): The input string representing the directory path to be scanned for video files.
-    :return: video_paths (list): A list of full paths of video files (with the ".avi" extension) found in the specified directory and its subdirectories.
+    :return: video_paths (list): A list of full paths of video files (with the ".avi" or ".mp4" extension) found in the specified directory and its subdirectories.
     """
 
     r = []
     for root, dirs, files in os.walk(dir):
         for name in files:
-            if name.endswith(".avi"):
+            if name.endswith(".avi") or name.endswith(".mp4"):
                 r.append(os.path.join(root, name))
                 print(os.path.join(root, name))
     return r
