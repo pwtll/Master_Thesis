@@ -483,6 +483,7 @@ def extract_output_folder(input_file_string):
     The function is specifically designed to handle file paths that contain a "Datasets" directory.
     It normalizes the input path to handle different separators (e.g., '/' or '\'),
     and extracts and preserves the dataset subfolder structure as the output folder path.
+    An additional subfolder with the video name is introduced to separate the saved files if there are multiple videos in the same folder.
 
     :param input_file_string: (str): The input string representing the file path.
     :return: output_string: (str): The output string representing the subfolder structure of the "Datasets" directory.
@@ -501,10 +502,10 @@ def extract_output_folder(input_file_string):
     output_path_components = path_components[datasets_index + 1:-1]
 
     # Extract the video filename
-    filename_video = path_components[-1].split('.')[0]
+    video_name = path_components[-1].split('.')[0]
 
     # Join the components back to form the output string
-    output_string = os.path.join(*output_path_components) + "/" + filename_video + "/"
+    output_string = os.path.join(*output_path_components) + "/" + video_name
 
     return output_string
 
@@ -513,25 +514,31 @@ def get_destination_path(video_file):
     """
     Generates the destination path derived from the input video file path.
     The function takes a video file path, extracts the subfolder structure of its "Datasets" directory and appends the specified filename.
-    If the file already exists, the function appends a timestamp to the filename, ensuring that the new file does not overwrite the existing one.
+    If the file already exists, the function appends a folder named with the current date-timestamp to the filepath,
+    ensuring that the new files do not overwrite the existing ones.
 
     :param video_file: (str): The input string representing the file path of the video.
     :return: filepath: (str): The full destination path where the file with the specified filename should be saved.
     """
 
-    output_folder = extract_output_folder(video_file)
+    directory = "../data/dataset_tesselation_angles/"
+    dataset_structure = extract_output_folder(video_file)
     filename = 'tesselation_angle_metrics_dict.pkl'
 
+    destination_folder = directory + dataset_structure + "/"
+    # destination_folder = os.path.join(*destination_file.split("/")[:-2])
+
     # Check whether the specified path exists or not
-    if not os.path.exists(output_folder):
+    if not os.path.exists(destination_folder):
         # Create a new directory
-        os.makedirs(output_folder, exist_ok=True)
-        # print("Created: " + output_folder)  # ToDo: introduce boolean verbose argument
+        os.makedirs(destination_folder, exist_ok=True)
+        # print("Created: " + destination_folder)
+    else:
+        # Create a new directory with the current timestamp to keep existing files
+        destination_folder = directory + time.strftime("%Y%m%d") + '_' + dataset_structure + "/"
+        if not os.path.exists(destination_folder):
+            os.makedirs(destination_folder, exist_ok=True)
 
-    filepath = output_folder + filename
-
-    # if file already exists, appends a timestamp to the filename to avoid overwriting the existing file
-    if os.path.isfile(filepath):
-        filepath = output_folder + time.strftime("%Y%m%d-%H%M%S") + '_' + filename
+    filepath = destination_folder + filename
 
     return filepath
