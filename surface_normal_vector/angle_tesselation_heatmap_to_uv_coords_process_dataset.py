@@ -84,21 +84,6 @@ def main(video_file=None, show_heatmap=False):
                 if cv2.waitKey(5) & 0xFF == 27:
                     break
 
-        # plot a heatmap of the mean reflectance angles of the face tesselation using UV coordinates
-        mean_angle_heatmap_uv = helper_functions.plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map, show_heatmap=show_heatmap)
-
-        if video_file:
-            img_path_svg = os.path.splitext(filepath)[0] + ".svg"
-            img_path_pdf = os.path.splitext(filepath)[0] + ".pdf"
-            img_path_png = os.path.splitext(filepath)[0] + ".png"
-            # save mean_angle_heatmap_uv plot in the same directory as tesselation_mean_angles
-            mean_angle_heatmap_uv.figure.savefig(img_path_svg, dpi=600)
-            mean_angle_heatmap_uv.figure.savefig(img_path_pdf, dpi=600)
-            mean_angle_heatmap_uv.figure.savefig(img_path_png, dpi=600)
-
-            # clear the current figure for next iteration
-            helper_functions.plt.clf()
-
         # check if dictionary of reflectance angles is not empty. Occurs of no face is recognized by mediapipe
         if bool(tesselation_mean_angles):
             # Retrieve the mean, variance and sample variance from aggregated angles
@@ -106,9 +91,23 @@ def main(video_file=None, show_heatmap=False):
             for triangle in FACE_MESH_TESSELATION:
                 tesselation_angle_metrics[str(triangle)] = helper_functions.finalize(tesselation_angle_metrics[str(triangle)])
 
+            # plot a heatmap of the mean reflectance angles of the face tesselation using UV coordinates
+            mean_angle_heatmap_uv = helper_functions.plot_mean_angle_heatmap_uv(tesselation_angle_metrics, uv_map, show_heatmap=show_heatmap)
+
             if video_file:
                 # save tesselation_angle_metrics dictionary in a pickle file
                 helper_functions.pickle_dump_tesselation_angles(tesselation_angle_metrics, filepath=filepath)
+
+                img_path_svg = os.path.splitext(filepath)[0] + ".svg"
+                img_path_pdf = os.path.splitext(filepath)[0] + ".pdf"
+                img_path_png = os.path.splitext(filepath)[0] + ".png"
+                # save mean_angle_heatmap_uv plot in the same directory as tesselation_mean_angles
+                mean_angle_heatmap_uv.figure.savefig(img_path_svg, dpi=600)
+                mean_angle_heatmap_uv.figure.savefig(img_path_pdf, dpi=600)
+                mean_angle_heatmap_uv.figure.savefig(img_path_png, dpi=600)
+
+                # clear the current figure for next iteration
+                helper_functions.plt.clf()
         else:
             raise Exception("No face detected. Please check video input.")
 
@@ -122,7 +121,7 @@ if __name__ == "__main__":
     if real_time:
         main(video_file=None, show_heatmap=True)
     else:
-        folder_path = 'g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/COHFACE/'
+        folder_path = 'g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/UBFC rPPG dataset/DATASET_2/'
         video_paths = helper_functions.get_video_paths_in_folder(folder_path)
 
         start_time_dataset = time.time()
