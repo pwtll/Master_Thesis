@@ -80,7 +80,7 @@ def main():
         helper_functions.pickle_dump_tesselation_angles(tesselation_angle_metrics, filepath='saved_dictionary.pkl')
 
         # plot a heatmap of the mean reflectance angles of the face tesselation using UV coordinates
-        helper_functions.plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map)
+        helper_functions.plot_mean_angle_heatmap_uv(tesselation_angle_metrics, uv_map)
 
     cap.release()
     cv2.destroyAllWindows()
