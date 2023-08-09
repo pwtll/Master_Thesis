@@ -34,8 +34,8 @@ def calculate_surface_normal(landmarks, landmark_list):
     points = np.array(points)
 
     # Calculate the vectors for two edges of the surface triangle
-    v1 = points[1] - points[0]
-    v2 = points[2] - points[0]
+    v1 = points[0] - points[1]
+    v2 = points[0] - points[2]
 
     # Calculate the surface normal vector as the cross product of the two edges
     surface_normal = np.cross(v1, v2)
@@ -43,8 +43,7 @@ def calculate_surface_normal(landmarks, landmark_list):
     # Normalize the surface normal vector to get a unit vector
     surface_normal /= np.linalg.norm(surface_normal)
 
-    #  the negation of the normalized surface normal vector is returned to ensure that it points away from the triangle
-    return -surface_normal
+    return surface_normal
 
 
 def calculate_angle_between_vectors(vector1, vector2):
@@ -113,14 +112,14 @@ def show_reflectance_angle_tesselation(image, landmarks, landmark_list, angle_de
 
         # convert angle to RGB values to draw heatmap
         angle_range = 90
-        red = 255 * angle_degrees / angle_range
-        blue = 255 * (1 - (angle_degrees / angle_range))
+        red = 255 * (1 - (angle_degrees / angle_range))
+        blue = 255 * angle_degrees / angle_range
 
         # alternative colorization
         # r, g, b = rgb(angle_degrees)
         # cv2.drawContours(image, [triangle_coords], 0, (b, g, r), -1)
 
-        cv2.drawContours(image, [triangle_coords], 0, (red, 0, blue), -1)
+        cv2.drawContours(image, [triangle_coords], 0, (blue, 0, red), -1)
 
 
 def rgb(value, minimum=0, maximum=90):
@@ -281,7 +280,7 @@ def draw_tesselation_heatmap(tesselation_mean_angles, uv_map):
 
     :param tesselation_mean_angles: (dict): A dictionary containing the mean reflectance angles of each triangle in the tesselation.
                                             The keys of the dictionary represent the triangle (typically a string representation of vertex indices),
-                                            and the values represent the mean reflectance angle of that triangle.
+                                            and the values represent tuples of the (mean reflectance angle, variance, sample_variance) of that triangle.
     :param uv_map: (list): A list of 2D coordinates (tuples) representing the UV coordinates of mediapipe's canonical face model.
                            Source of the uv_map: https://github.com/spite/FaceMeshFaceGeometry/blob/353ee557bec1c8b55a5e46daf785b57df819812c/js/geometry.js
     :return: image: (numpy array): A 3D NumPy array representing the heatmap image.
@@ -302,13 +301,13 @@ def draw_tesselation_heatmap(tesselation_mean_angles, uv_map):
         triangle_coords_uv = np.array([landmark_coords_uv], dtype=np.int32)
 
         # get mean reflectance angle of mesh triangle
-        triangle_mean_angle = tesselation_mean_angles[str(triangle)][1]
+        triangle_mean_angle = tesselation_mean_angles[str(triangle)][0]
 
         # convert angle to RGB values to draw heatmap
         range = 90
-        red = 255 * triangle_mean_angle / range
-        blue = 255 * (1 - (triangle_mean_angle / range))
-        cv2.drawContours(image, [triangle_coords_uv], 0, (red, 0, blue), -1)
+        red = 255 * (1 - (triangle_mean_angle / range))
+        blue = 255 * triangle_mean_angle / range
+        cv2.drawContours(image, [triangle_coords_uv], 0, (blue, 0, red), -1)
 
     return image
 
@@ -380,19 +379,19 @@ def pickle_dump_tesselation_angles(tesselation_mean_angles, filepath='tesselatio
         pickle.dump(tesselation_mean_angles, f)
 
 
-def plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map, show_heatmap=True):
+def plot_mean_angle_heatmap_uv(tesselation_angle_metrics, uv_map, show_heatmap=True):
     """
     Visualizes a heatmap of the mean angles for each triangle in mediapipe's face tesselation using UV coordinates from the canonical face model.
     The function generates a heatmap using the draw_tesselation_heatmap function, converts it to an RGB image, and plots it.
     The function also creates a user-defined colormap for the heatmap and adds a colorbar to represent the mean angles in degrees.
 
-    :param tesselation_mean_angles: (dict): A dictionary containing the mean angles for each triangle in the tesselation.
+    :param tesselation_mean_angles: (dict): A dictionary containing tuples of the (mean angle, variance, sample_variance) for each triangle in the tesselation.
                                             The keys of the dictionary represent the triangle (typically a string representation of vertex indices),
-                                            and the values represent the mean angle of each triangle in degrees.
+                                            and the values represent tuples of the (mean angle, variance, sample_variance) of each triangle in degrees.
     :param uv_map: (list): A list of 2D coordinates (tuples) representing the UV coordinates of the canonical face model.
     :return: The function does not return any value. It generates and displays the mean angle heatmap along with the colorbar.
     """
-    mean_angle_heatmap_bgr = draw_tesselation_heatmap(tesselation_mean_angles, uv_map)
+    mean_angle_heatmap_bgr = draw_tesselation_heatmap(tesselation_angle_metrics, uv_map)
     mean_angle_heatmap_rgb = cv2.cvtColor(mean_angle_heatmap_bgr, cv2.COLOR_BGR2RGB)
 
     plt.rcParams["figure.figsize"] = (5, 4)
@@ -416,7 +415,7 @@ def plot_mean_angle_heatmap_uv(tesselation_mean_angles, uv_map, show_heatmap=Tru
     cm1 = mcol.LinearSegmentedColormap.from_list("MyCmapName", ["r", "b"])
 
     # get highest and lowest mean reflectance angles
-    angles_list = sorted([tuples[1] for tuples in list(tesselation_mean_angles.values())])
+    angles_list = sorted([tuples[0] for tuples in list(tesselation_angle_metrics.values())])
     min_angle = angles_list[0]
     max_angle = angles_list[-1]
 
