@@ -11,7 +11,6 @@ import time
 
 example_video = 0  # "vid.avi"
 
-cap = cv2.VideoCapture(example_video, cv2.CAP_DSHOW)
 if example_video == 0:
     cap = cv2.VideoCapture(example_video, cv2.CAP_DSHOW)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
