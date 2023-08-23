@@ -3,6 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 from typing import List, Collection, NamedTuple
+from tsmoothie.smoother import *
 
 
 def segment_roi(img: np.ndarray, mesh_points: List[np.ndarray]) -> np.ndarray:
@@ -22,7 +23,7 @@ def segment_roi(img: np.ndarray, mesh_points: List[np.ndarray]) -> np.ndarray:
     cv2.fillPoly(mask_roi, mesh_points, (255, 255, 255, cv2.LINE_AA))
     output_roi = cv2.copyTo(frame_roi, mask_roi)
 
-    cX, cY = calc_centroids(output_roi)
+    # cX, cY = calc_centroids(output_roi)
 
     return output_roi
 
@@ -256,6 +257,84 @@ def plot_contours(rgb_frame: np.ndarray, masks: List[np.ndarray]):
     plt.figure()
     plt.imshow(rgb_frame_copy)
     plt.show()
+
+
+def plot_jitter(centroid_list, roi_name):
+    frame_counts = [x[0] for x in centroid_list]
+    x_val = [x[1][0] for x in centroid_list]
+    y_val = [x[1][1] for x in centroid_list]
+
+    # 3D plot
+    # ax = plt.figure("3D plot of centroid movement of " + roi_name).add_subplot(projection='3d')
+    # plt.title("3D plot of centroid movement of " + roi_name)
+    # ax.plot(frame_counts, x_val, zs=y_val, label='centroid movement in (x, y)')  # zdir='z',
+    # ax.set_xlabel("Number of frames")
+    # ax.set_ylabel("x coordinate (in pixels)")
+    # ax.set_zlabel("y coordinate (in pixels)")
+
+    # 2D plot
+    plt.figure("2D plot of centroid movement of " + roi_name)
+    plt.title("2D plot of centroid movement of " + roi_name)
+    plt.plot(frame_counts, x_val, 'b', label='x-coordinate')
+    plt.plot(frame_counts, y_val, 'r', label='y-coordinate')
+    plt.grid(axis='both', color='0.95')
+    plt.xlabel("Number of frames")
+    plt.ylabel("Number of pixels")
+    plt.legend()
+
+    '''
+    # operate smoothing on coordinates 
+    plt.figure("smoothed 2D plot of centroid movement of " + roi_name)
+    smoother_px = ConvolutionSmoother(window_len=10, window_type='ones')
+    smoother_py = ConvolutionSmoother(window_len=10, window_type='ones')
+    smoother_px.smooth(x_val)
+    smoother_py.smooth(y_val)
+
+    # plot smoothed positions in upper subplot
+    plt.plot(frame_counts, smoother_px.data[0], linestyle="-", label='px', color='blue')
+    plt.plot(frame_counts, smoother_py.data[0], linestyle="-", label='py', color='red')
+    plt.plot(frame_counts, smoother_px.smooth_data[0], linestyle="dashed", linewidth=2, color='blue')
+    plt.plot(frame_counts, smoother_py.smooth_data[0], linestyle="dashed", linewidth=2, color='red')
+
+    # plot standard deviation
+    # low_px, up_px = smoother_px.get_intervals('sigma_interval', n_sigma=3)  # generate intervals
+    # low_py, up_py = smoother_py.get_intervals('sigma_interval', n_sigma=3)
+    # plt.fill_between(frame_counts, low_px[0], up_px[0], alpha=0.3)
+    # plt.fill_between(frame_counts, low_py[0], up_py[0], alpha=0.3)
+
+    plt.xlabel("Number of frames")
+    plt.ylabel("Number of pixels")
+    plt.grid(axis='both', color='0.95')
+    plt.legend()
+    '''
+    # plt.ion()
+    plt.show(block=False)
+    plt.pause(.001)
+
+
+def plot_jitter_comparison(centroid_list, centroid_list_filtered, roi_name):
+    frame_counts = [x[0] for x in centroid_list]
+    x_val = [x[1][0] for x in centroid_list]
+    y_val = [x[1][1] for x in centroid_list]
+
+    frame_counts_filtered = [x[0] for x in centroid_list_filtered]
+    x_val_filtered = [x[1][0] for x in centroid_list_filtered]
+    y_val_filtered = [x[1][1] for x in centroid_list_filtered]
+
+    # 2D plot
+    plt.figure("2D plot of centroid movement of " + roi_name)
+    plt.title("2D plot of centroid movement of " + roi_name)
+    plt.plot(frame_counts, x_val, 'b', label='x-coordinate')
+    plt.plot(frame_counts, y_val, 'r', label='y-coordinate')
+    plt.plot(frame_counts_filtered, x_val_filtered, 'g--', label='filtered x-coordinate')
+    plt.plot(frame_counts_filtered, y_val_filtered, 'g--', label='filtered y-coordinate')
+    plt.grid(axis='both', color='0.95')
+    plt.xlabel("Number of frames")
+    plt.ylabel("Number of pixels")
+    plt.legend()
+
+    plt.show(block=False)
+    plt.pause(.001)
 
 
 # up to 15 overlapping masks

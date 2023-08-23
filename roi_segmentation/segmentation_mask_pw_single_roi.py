@@ -118,6 +118,8 @@ with mp_face_mesh.FaceMesh(
             # ToDo: wirft exception, wenn Gesicht aus dem Bild geht
             try:
                 # crop ROI frames
+
+                # output_roi_face = cv2.resize(output_roi_face, (36, 36))
                 output_roi_forehead = helper.resize_roi(output_roi_forehead, mesh_points_forehead)
                 output_roi_left_cheek = helper.resize_roi(output_roi_left_cheek, mesh_points_left_cheek)
                 output_roi_right_cheek = helper.resize_roi(output_roi_right_cheek, mesh_points_right_cheek)
