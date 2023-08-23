@@ -1,8 +1,6 @@
-/ROI_definition/
-/motion_detection/
-/Maurice/
+/data/dataset_tesselation_angles/
+/data/vids/
+/Eulerian Video Magnification/
 /test/
-/rPPG_POS_detection/
-/roi_segmentation/vid.avi
-/roi_segmentation/test.mp4
 /transferred_UBFC-rPPG_DL.py
+

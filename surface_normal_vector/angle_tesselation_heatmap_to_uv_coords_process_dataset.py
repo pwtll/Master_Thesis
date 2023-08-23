@@ -116,7 +116,7 @@ def main(video_file=None, show_heatmap=False):
 
 
 if __name__ == "__main__":
-    real_time = False
+    real_time = True
 
     if real_time:
         main(video_file=None, show_heatmap=True)
