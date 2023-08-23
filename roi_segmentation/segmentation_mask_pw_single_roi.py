@@ -2,10 +2,8 @@ import cv2
 import numpy as np
 import mediapipe as mp
 
-mp_face_mesh = mp.solutions.face_mesh
 import DEFINITION_FACEMASK
 import helper_code as helper
-
 import time
 
 
@@ -21,6 +19,8 @@ else:
 # initialize moving average filter
 window_size = 5
 centroid_list = []
+
+mp_face_mesh = mp.solutions.face_mesh
 
 with mp_face_mesh.FaceMesh(
         max_num_faces=1,

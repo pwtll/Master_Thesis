@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import mediapipe as mp
 
-mp_face_mesh = mp.solutions.face_mesh
 import DEFINITION_FACEMASK
 import helper_code as helper
 
@@ -64,6 +63,8 @@ num_landmarks = 478  # len(results.multi_face_landmarks[0].landmark)
 
 # Use a nested list comprehension to create the 3D array of filters as each landmarks coordinate needs its own OneEuroFilter
 filters = np.array([[OneEuroFilter(**config) for j in range(num_coordinates)] for i in range(num_landmarks)])
+
+mp_face_mesh = mp.solutions.face_mesh
 
 with mp_face_mesh.FaceMesh(
         max_num_faces=1,
