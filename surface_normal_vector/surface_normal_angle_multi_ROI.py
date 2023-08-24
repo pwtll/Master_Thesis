@@ -52,7 +52,6 @@ def calculate_and_draw_normal(image, face_landmarks, landmarks, landmark_list):
     # Calculate the angle between the surface normal vector and the camera axis
     angle_degrees = calculate_angle_between_vectors(surface_normal, camera_axis_vector)
 
-    # ToDo: richtige Vorzeichen implementieren, sodass Winkel zwischen -90° und +90° liegen
     if angle_degrees > 90:
         surface_normal = -surface_normal
         angle_degrees = 180 - angle_degrees
@@ -124,10 +123,8 @@ def main():
                         x, y, z = landmark.x, landmark.y, landmark.z
                         landmarks.append([x, y, z])
 
-                    # ToDo: über alle mesh_triangles iterieren
                     # Calculate and draw surface normal vectors for all three surfaces
                     calculate_and_draw_normal(image, face_landmarks, landmarks, FOREHEAD_LIST)
-                    # ToDo: korrigiere Vorzeichen / ziehe Betrag bei der Winkelberechnung für alle ROIs. Der Winkel soll immer zwischen -90 bis 90° liegen° liegen
                     calculate_and_draw_normal(image, face_landmarks, landmarks, LEFT_CHEEK_LIST)
                     calculate_and_draw_normal(image, face_landmarks, landmarks, RIGHT_CHEEK_LIST)
 
