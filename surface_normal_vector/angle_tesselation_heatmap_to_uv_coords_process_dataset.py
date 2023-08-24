@@ -10,7 +10,7 @@ from tqdm import tqdm
 import concurrent.futures
 
 
-def main(video_file=None, show_heatmap=False):
+def main(video_file=None, show_heatmap=False, threshold=90):
     mp_face_mesh = mp.solutions.face_mesh
 
     if video_file:
@@ -67,7 +67,7 @@ def main(video_file=None, show_heatmap=False):
 
                         # display angle heatmap
                         if show_heatmap:
-                            helper_functions.show_reflectance_angle_tesselation(image, landmark_coords_xyz, triangle, angle_degrees, threshold=90)
+                            helper_functions.show_reflectance_angle_tesselation(image, landmark_coords_xyz, triangle, angle_degrees, threshold=threshold)
 
                         # save angle of each tesselation triangle in a dictionary
                         angle_dict.update({str(triangle): angle_degrees})
@@ -116,10 +116,15 @@ def main(video_file=None, show_heatmap=False):
 
 
 if __name__ == "__main__":
+
+    # threshold angle in degrees. If the calculated angle is below this threshold, the heatmap will be drawn on the image
+    threshold = 90
+
+    # set True for real time webcam plot. set False to analyze the mean angles of a whole dataset saved in folder_path below
     real_time = True
 
     if real_time:
-        main(video_file=None, show_heatmap=True)
+        main(video_file=None, show_heatmap=True, threshold=threshold)
     else:
         folder_path = 'g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/UBFC rPPG dataset/DATASET_2/'
         video_paths = helper_functions.get_video_paths_in_folder(folder_path)
