@@ -63,7 +63,7 @@ def calculate_and_draw_normal(image, face_landmarks, landmarks, landmark_list):
     centroid_y = int(np.mean([face_landmarks.landmark[i].y for i in landmark_list]) * image.shape[0])
 
     # Scale the surface normal for visualization purposes
-    scale_factor = 0.2
+    scale_factor = 0.2*angle_degrees/90
     endpoint = [centroid_x + int(scale_factor * image.shape[1] * surface_normal[0]),
                 centroid_y + int(scale_factor * image.shape[0] * surface_normal[1])]
 
