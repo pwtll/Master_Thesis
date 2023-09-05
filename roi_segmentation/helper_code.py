@@ -9,18 +9,18 @@ from tsmoothie.smoother import *
 def segment_roi(img: np.ndarray, mesh_points: List[np.ndarray]) -> np.ndarray:
     """
     Segments ROI out of an image according to given mesh_points and returns an image of the isolated ROI.
-    The centroid of the ROI is oriented at the center of the image.
 
     :param img: An image containing one ROI represented as a numpy ndarray.
     :param mesh_points: List containing ndarrays of 2d coordinates of the mesh_points of the ROI
     :return: np.ndarray: An image represented as a numpy ndarray with all pixels blackened except the ROI
     """
     img_h, img_w = img.shape[:2]
-    mask_face = np.zeros((img_h, img_w), dtype=np.uint8)
-
+    mask_roi = np.zeros((img_h, img_w), dtype=np.uint8)
     frame_roi = img.copy()
-    mask_roi = mask_face.copy()
-    cv2.fillPoly(mask_roi, mesh_points, (255, 255, 255, cv2.LINE_AA))
+
+    for point in mesh_points:
+        cv2.fillConvexPoly(mask_roi, point, (255, 255, 255, cv2.LINE_AA))
+    # cv2.fillPoly(mask_roi, mesh_points, (255, 255, 255, cv2.LINE_AA))
     output_roi = cv2.copyTo(frame_roi, mask_roi)
 
     # cX, cY = calc_centroids(output_roi)

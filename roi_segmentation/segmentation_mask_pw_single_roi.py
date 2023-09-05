@@ -126,9 +126,9 @@ with mp_face_mesh.FaceMesh(
 
                 cv2.imshow('img', frame)
                 cv2.imshow('ROI face', output_roi_face)
-                cv2.imshow('ROI forehead', output_roi_forehead)
-                cv2.imshow('ROI left cheek', output_roi_left_cheek)
-                cv2.imshow('ROI right cheek', output_roi_right_cheek)
+                # cv2.imshow('ROI forehead', output_roi_forehead)
+                # cv2.imshow('ROI left cheek', output_roi_left_cheek)
+                # cv2.imshow('ROI right cheek', output_roi_right_cheek)
                 # print(1/(time.time() - startTime))
             except cv2.error:
                 pass
