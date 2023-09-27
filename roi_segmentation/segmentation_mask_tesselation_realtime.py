@@ -24,7 +24,7 @@ def calculate_roi(results, image, threshold=90):
         # Calculate angles between camera and surface normal vectors for whole face mesh tessellation and draw an angle heatmap
         for triangle in DEFINITION_FACEMASK.FACE_MESH_TESSELATION:
             # calculate reflectance angle in degree
-            angle_degrees = helper_functions.calculate_angle_heatmap(landmark_coords_xyz, triangle)
+            angle_degrees = helper_functions.calculate_surface_normal_angle(landmark_coords_xyz, triangle)
 
             if angle_degrees < threshold:
                 # Extract the coordinates of the three landmarks of the triangle
