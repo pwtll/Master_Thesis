@@ -63,7 +63,7 @@ def main(video_file=None, show_heatmap=False, threshold=90):
                     angle_dict = {}         # to save angle of each mesh triangle in a dict
                     for triangle in FACE_MESH_TESSELATION:
                         # calculate reflectance angle in degree
-                        angle_degrees = helper_functions.calculate_angle_heatmap(landmark_coords_xyz, triangle)
+                        angle_degrees = helper_functions.calculate_surface_normal_angle(landmark_coords_xyz, triangle)
 
                         # display angle heatmap
                         if show_heatmap:
@@ -121,13 +121,16 @@ if __name__ == "__main__":
     threshold = 90
 
     # set True for real time webcam plot. set False to analyze the mean angles of a whole dataset saved in folder_path below
-    real_time = True
+    real_time = False
 
     if real_time:
         main(video_file=None, show_heatmap=True, threshold=threshold)
     else:
-        folder_path = 'g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/UBFC rPPG dataset/DATASET_2/'
+        folder_path = 'g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/VIPL-HR-V1/'
         video_paths = helper_functions.get_video_paths_in_folder(folder_path)
+
+        scenario = "v2\\source2"
+        video_paths = [video_paths[i] for i in range(len(video_paths)) if scenario in video_paths[i].split("/")[-1]]
 
         start_time_dataset = time.time()
 

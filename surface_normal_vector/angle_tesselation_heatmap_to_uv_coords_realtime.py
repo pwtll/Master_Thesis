@@ -52,7 +52,7 @@ def main():
                         # draw_landmarks(image, face_landmarks, triangle)
 
                         # calculate reflectance angle in degree
-                        angle_degrees = helper_functions.calculate_angle_heatmap(landmark_coords_xyz, triangle)
+                        angle_degrees = helper_functions.calculate_surface_normal_angle(landmark_coords_xyz, triangle)
                         angle_dict.update({str(triangle): angle_degrees})
 
                         # # display angle heatmap
