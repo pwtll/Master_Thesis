@@ -9,11 +9,66 @@ import time
 import matplotlib.pyplot as plt
 from OneEuroFilter import OneEuroFilter
 import copy
+import scipy.signal
 
 # from mediapipe.python._framework_bindings import timestamp
 # Timestamp = timestamp.Timestamp
 
-example_video = 0  # "jitter_test.mp4"  # 0  # "vid.avi"
+
+def butter_lowpass(cutoff, fs, order=5):
+    return scipy.signal.butter(order, cutoff, fs=fs, btype='low', analog=False)
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = scipy.signal.lfilter(b, a, data)
+    return y
+
+
+def plot_filtered_coordinates(x_coords):
+    # Filter requirements.
+    order = 6
+    global fs  # sample rate, Hz
+    cutoff = 1.0  # 3.667  # desired cutoff frequency of the filter, Hz
+
+    # Filter the data, and plot both the original and filtered signals.
+    x_coords_lowpass_filtered = butter_lowpass_filter(x_coords, cutoff, fs, order)
+
+    # define lowpass filter with 2.5 Hz cutoff frequency
+    b, a = scipy.signal.iirfilter(4, Wn=2.5, fs=fs, btype="low", ftype="butter")
+    x_coords_lfilter = scipy.signal.lfilter(b, a, x_coords)
+    # apply filter forward and backward using filtfilt
+    x_coords_filtfilt = scipy.signal.filtfilt(b, a, x_coords)
+
+    plt.plot(x_coords, 'k-', label='x coords')
+    plt.plot(x_coords_lowpass_filtered, 'r-', linewidth=2, label='lowpass filtered x_coords')
+    plt.plot(x_coords_lfilter, 'g-', linewidth=2, alpha=0.5, label='scipy lfilter x_coords')
+    plt.plot(x_coords_filtfilt, 'b-', linewidth=2, alpha=0.8, label='scipy filtfilt x_coords')
+    plt.xlabel('Frames')
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+
+def plot_fft(data, data_filt, sample_rate = 30, title='FFT of signal'):
+    fft_result = np.fft.fft(data)
+    freqs = np.fft.fftfreq(len(fft_result), 1 / sample_rate)
+
+    fft_result_filt = np.fft.fft(data_filt)
+    freqs_filt = np.fft.fftfreq(len(fft_result_filt), 1 / sample_rate)
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(freqs, np.abs(fft_result), 'tab:blue', label='FFT')
+    plt.plot(freqs_filt, np.abs(fft_result_filt), 'tab:orange', alpha=0.5, label=('FFT of filtered signal'))
+    # plt.xscale('log')
+    plt.title(title)
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Magnitude')
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+
+example_video = "../data/vids/angle_jitter_test_2.mp4"  # "jitter_test.mp4"  # 0  # "vid.avi"
 
 if example_video == 0:
     cap = cv2.VideoCapture(example_video, cv2.CAP_DSHOW)
@@ -21,6 +76,7 @@ if example_video == 0:
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 else:
     cap = cv2.VideoCapture(example_video)
+    cap_filter = cv2.VideoCapture(example_video)
 
 # initialize moving average filter
 window_size = 5
@@ -29,9 +85,11 @@ centroid_list = []
 centroid_coords_forehead = []
 centroid_coords_left_cheek = []
 centroid_coords_right_cheek = []
+centroid_coords_nose = []
 centroid_coords_forehead_filtered = []
 centroid_coords_left_cheek_filtered = []
 centroid_coords_right_cheek_filtered = []
+centroid_coords_nose_filtered = []
 frame_cnt = 0
 
 # https://github.com/google/mediapipe/blob/master/mediapipe/calculators/util/landmarks_smoothing_calculator.proto
@@ -65,6 +123,67 @@ num_landmarks = 478  # len(results.multi_face_landmarks[0].landmark)
 filters = np.array([[OneEuroFilter(**config) for j in range(num_coordinates)] for i in range(num_landmarks)])
 
 mp_face_mesh = mp.solutions.face_mesh
+
+nose_coord_x = []
+nose_coord_y = []
+
+nose_coord_x_filtered = []
+nose_coord_y_filtered = []
+
+landmark_coords_xyz_history = [[] for _ in range(478)]
+fs = 30
+
+with mp_face_mesh.FaceMesh(
+        max_num_faces=1,
+        refine_landmarks=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+) as face_mesh:
+    while cap_filter.isOpened():
+        success, frame = cap_filter.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            # If loading a video, use 'break' instead of 'continue'.
+            if example_video == 0:
+                continue
+            else:
+                break
+        frame = cv2.flip(frame, 1)
+
+        img_h, img_w = frame.shape[:2]
+
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = face_mesh.process(rgb_frame)
+
+        if results.multi_face_landmarks:
+            for face_landmarks in results.multi_face_landmarks:
+
+                # Extract landmarks' xyz-coordinates from the detected face
+                for index, landmark in enumerate(face_landmarks.landmark):
+                    x, y, z = landmark.x, landmark.y, landmark.z
+                    landmark_coords_xyz_history[index].append((x, y, z))
+
+# define lowpass filter with 2.5 Hz cutoff frequency
+b, a = scipy.signal.iirfilter(20, Wn=2.9, fs=fs, btype="low", ftype="butter")
+
+for idx in range(478):
+    x_coords = [coords_xy[0] for coords_xy in landmark_coords_xyz_history[idx]]
+    y_coords = [coords_xy[1] for coords_xy in landmark_coords_xyz_history[idx]]
+    z_coords = [coords_xy[2] for coords_xy in landmark_coords_xyz_history[idx]]
+
+    if len(x_coords) > 15:
+        # if idx == 4:
+        #     plot_filtered_coordinates(x_coords)
+
+        # apply filter forward and backward using filtfilt
+        x_coords_lowpass_filtered = scipy.signal.filtfilt(b, a, x_coords)
+        y_coords_lowpass_filtered = scipy.signal.filtfilt(b, a, y_coords)
+        z_coords_lowpass_filtered = scipy.signal.filtfilt(b, a, z_coords)
+
+        landmark_coords_xyz_history[idx] = [(x_coords_lowpass_filtered[i], y_coords_lowpass_filtered[i], z_coords_lowpass_filtered[i]) for i in
+                                            range(0, len(x_coords_lowpass_filtered))]
+
+cap_filter.release()
 
 with mp_face_mesh.FaceMesh(
         max_num_faces=1,
@@ -148,7 +267,7 @@ with mp_face_mesh.FaceMesh(
             output_roi_right_cheek = helper.segment_roi(frame, mesh_points_right_cheek)
 
             # save locations of each ROI's centroid in a list for plotting the jitter
-            cX_forehead, cY_forehead = helper.calc_centroids(output_roi_forehead)
+            cX_forehead, cY_forehead = helper.calc_centroids(output_roi_forehead)  # mesh_points[4]
             centroid_coords_forehead.append((frame_cnt, (cX_forehead, cY_forehead)))
             cX_left_cheek, cY_left_cheek = helper.calc_centroids(output_roi_left_cheek)
             centroid_coords_left_cheek.append((frame_cnt, (cX_left_cheek, cY_left_cheek)))
@@ -158,11 +277,8 @@ with mp_face_mesh.FaceMesh(
             # filtered ROI's centroids
             # ROI forehead
             output_roi_forehead_filtered = helper.segment_roi(frame, mesh_points_forehead_filtered)
-            cX_forehead_filtered, cY_forehead_filtered = helper.calc_centroids(output_roi_forehead_filtered)
+            cX_forehead_filtered, cY_forehead_filtered = helper.calc_centroids(output_roi_forehead_filtered)  # mesh_points_filtered[4]
             centroid_coords_forehead_filtered.append((frame_cnt, (cX_forehead_filtered, cY_forehead_filtered)))
-
-            # used for x-axis of plot
-            frame_cnt += 1
 
             # ROIs of total face
             # drawing on the mask
@@ -172,6 +288,7 @@ with mp_face_mesh.FaceMesh(
             output_roi_face = cv2.copyTo(frame, mask_face)
 
             # drawing ROI on the frames
+            '''
             cv2.polylines(frame, [mesh_points[DEFINITION_FACEMASK.FOREHEAD_list]], True, (0, 0, 255), 2, cv2.LINE_AA)
             cv2.polylines(frame, [helper.generate_contour_points(flexible_list=DEFINITION_FACEMASK.LEFT_CHEEK_LIST,
                                                                  landmarks=results.multi_face_landmarks[0].landmark,
@@ -182,6 +299,38 @@ with mp_face_mesh.FaceMesh(
             cv2.polylines(frame, mesh_points_forehead, True, (0, 255, 0), 1, cv2.LINE_AA)
             cv2.polylines(frame, mesh_points_left_cheek, True, (0, 255, 0), 1, cv2.LINE_AA)
             cv2.polylines(frame, mesh_points_right_cheek, True, (0, 255, 0), 1, cv2.LINE_AA)
+            '''
+
+            # cv2.circle(frame, (cX_forehead, cY_forehead), 3, (0, 0, 255), -1)
+            # cv2.circle(frame, (cX_forehead_filtered, cY_forehead_filtered), 1, (0, 255, 0), -1)
+
+            for point in mesh_points:
+                cv2.circle(frame, (point), 1, (0, 0, 255), -1)
+
+            # plot filtfilt filtered landmark coordinates
+            for face_landmarks in landmark_coords_xyz_history:
+                # Extract landmarks' xyz-coordinates from the detected face
+                cv2.circle(frame, (int(face_landmarks[frame_cnt][0]*img_w), int(face_landmarks[frame_cnt][1]*img_h)), 1, (0, 255, 0), -1)  # img_w, img_h
+
+            # get coordinates of nose tip landmark to plot its jitter
+            landmark_idx = 4
+            cX_nose, cY_nose = mesh_points[landmark_idx]
+            centroid_coords_nose.append((frame_cnt, (cX_nose, cY_nose)))
+            cX_nose_filtered, cY_nose_filtered = int(landmark_coords_xyz_history[landmark_idx][frame_cnt][0] * img_w), \
+                                                 int(landmark_coords_xyz_history[landmark_idx][frame_cnt][1] * img_h)
+            centroid_coords_nose_filtered.append((frame_cnt, (cX_nose_filtered, cY_nose_filtered)))
+
+            nose_coord_x.append(mesh_points_filtered[4][0])
+            nose_coord_y.append(mesh_points_filtered[4][1])
+
+            nose_coord_x_filtered.append(cX_nose_filtered)
+            nose_coord_y_filtered.append(cY_nose_filtered)
+
+            # used for x-axis of plot
+            frame_cnt += 1
+
+            # for point in mesh_points_filtered:
+            #     cv2.circle(frame, (point), 1, (0, 255, 0), -1)
 
             # crop frame to square bounding box, centered at centroid between all ROIs
             x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates(output_roi_face, results)
@@ -243,6 +392,14 @@ cv2.destroyAllWindows()
 
 # ToDo: interactive plot of parameter's effect according to page 16 in:
 # https://www.math.uni-leipzig.de/~hellmund/Vorlesung/matplotlib19.pdf
-helper.plot_jitter_comparison(centroid_coords_forehead, centroid_coords_forehead_filtered, "forehead")
+helper.plot_jitter_comparison(centroid_coords_nose, centroid_coords_nose_filtered, "nose tip")
+# helper.plot_jitter_comparison(centroid_coords_forehead, centroid_coords_forehead_filtered, "forehead")
 
 plt.show()
+
+# Plot the FFT of nose landmark's x coordinate
+plot_fft(nose_coord_x, nose_coord_x_filtered, sample_rate=30, title='FFT of nose landmarks x-coordinate')
+
+# Calculate the FFT of nose landmark's y coordinate
+plot_fft(nose_coord_y, nose_coord_y_filtered, sample_rate=30, title='FFT of nose landmarks y-coordinate')
+
