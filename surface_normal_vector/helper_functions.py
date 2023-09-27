@@ -1,3 +1,4 @@
+import datetime
 import os.path
 import time
 import cv2
@@ -10,29 +11,31 @@ from roi_segmentation.DEFINITION_FACEMASK import FACE_MESH_TESSELATION
 import pickle
 import json
 from skimage.transform import PiecewiseAffineTransform, warp
+from numba import jit, njit
 
 
-def calculate_surface_normal(landmarks, landmark_list):
+def calculate_surface_normal(landmarks, landmark_list) -> np.ndarray:
     """
     Calculates the surface normal vector of a triangle defined by three landmarks (3D points) in space.
     The function takes two parameters:
     - landmarks (a dictionary of landmark coordinates)
     - landmark_list (a list of three landmark indices representing the vertices of the triangle)
 
-    :param landmarks:  (dict): A dictionary where the keys are landmark indices, and the values are 3D coordinates (numpy arrays or lists)
+    :param landmarks:  (list): A dictionary where the keys are landmark indices, and the values are 3D coordinates (numpy arrays or lists)
                                representing the landmarks' positions in space.
     :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
-                                  These indices must correspond to keys present in the landmarks dictionary.
+                                  These indices must correspond to indices present in the 'landmarks' list.
     :return: surface_normal: (numpy array): A 3D numpy array representing the surface normal vector of the triangle.
                                            The vector is normalized to have a unit length and points away from the triangle
     """
 
     # Extract the coordinates of the three landmarks for the surface
-    points = [landmarks[i] for i in landmark_list]
+    points = np.array([landmarks[i] for i in landmark_list])
 
-    # Convert the points to NumPy array for easier computation
-    points = np.array(points)
+    return get_surface_normal(points)
 
+@jit(nopython=True)
+def get_surface_normal(points):
     # Calculate the vectors for two edges of the surface triangle
     v1 = points[0] - points[1]
     v2 = points[0] - points[2]
@@ -46,6 +49,7 @@ def calculate_surface_normal(landmarks, landmark_list):
     return surface_normal
 
 
+@jit(nopython=True)
 def calculate_angle_between_vectors(vector1, vector2):
     """
     Calculates the angle (in degrees) between two given vectors in 3D space using the dot product formula.
@@ -60,24 +64,24 @@ def calculate_angle_between_vectors(vector1, vector2):
     return math.degrees(math.acos(cos_theta))
 
 
-def calculate_angle_heatmap(landmarks, landmark_list):
+def calculate_surface_normal_angle(landmarks, triangle):
     """
     Calculates the angle between the surface normal vector of a given triangle (defined by three landmarks) and the camera axis vector.
     The camera axis vector is assumed to be [0, 0, -1].
     The function returns the calculated reflectance angle (in degrees) between the surface normal vector and the camera axis vector.
 
-    :param landmarks: (dict): A dictionary where the keys are landmark indices, and the values are 3D coordinates (numpy arrays or lists)
-                              representing the landmarks' positions in space.
-    :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
-                                  These indices must correspond to keys present in the landmarks dictionary.
+    :param landmarks: (List): A List where the indices are the processed order of mediapipe landmark indices, and the values are 3D coordinates
+                              (numpy arrays or lists) representing the landmarks' positions in space.
+    :param triangle: (list): A list containing three landmark indices that define the vertices of the triangle.
+                                  These indices must correspond to indices present in the 'landmarks' list.
     :return: angle_degrees: (float): The angle (in degrees) between the surface normal vector and the camera axis vector.
     """
 
     # Calculate the surface normal vector for the surface
-    surface_normal = calculate_surface_normal(landmarks, landmark_list)
+    surface_normal = calculate_surface_normal(landmarks, triangle)
 
     # Calculate the camera axis vector
-    camera_axis_vector = np.array([0, 0, -1])
+    camera_axis_vector = np.array([0, 0, -1], dtype="float64")
 
     # Calculate the angle between the surface normal vector and the camera axis
     angle_degrees = calculate_angle_between_vectors(surface_normal, camera_axis_vector)
@@ -96,10 +100,10 @@ def show_reflectance_angle_tesselation(image, landmarks, landmark_list, angle_de
     where the color of the heatmap represents the angle's magnitude.
 
     :param image: (numpy array): A 3D NumPy array representing the input image where the heatmap will be drawn.
-    :param landmarks: (dict): A dictionary where the keys are landmark indices, and the values are 3D coordinates (numpy arrays or lists)
-                              representing the landmarks' positions in space.
+    :param landmarks: (List): A List where the indices are the processed order of mediapipe landmark indices, and the values are 3D coordinates
+                              (numpy arrays or lists) representing the landmarks' positions in space.
     :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
-                                  These indices must correspond to keys present in the landmarks dictionary.
+                                  These indices must correspond to indices present in the 'landmarks' list.
     :param angle_degrees: (float): The reflectance angle (in degrees) between the surface normal vector and the camera axis vector for the given triangle.
     :param threshold: (float, optional): The threshold angle in degrees. If the calculated angle is below this threshold,
                                         the heatmap will be drawn on the image. Default value is 90 degrees.
@@ -111,17 +115,18 @@ def show_reflectance_angle_tesselation(image, landmarks, landmark_list, angle_de
         triangle_coords = get_triangle_coords(image, landmarks, landmark_list)
 
         # convert angle to RGB values to draw heatmap
-        angle_range = 90
-        red = 255 * (1 - (angle_degrees / angle_range))
-        blue = 255 * angle_degrees / angle_range
+        # angle_range = 90
+        # red = 255 * (1 - (angle_degrees / angle_range))
+        # blue = 255 * angle_degrees / angle_range
 
-        # alternative colorization
-        # r, g, b = rgb(angle_degrees)
-        # cv2.drawContours(image, [triangle_coords], 0, (b, g, r), -1)
+        # cv2.drawContours(image, [triangle_coords], 0, (blue, 0, red), -1)
 
-        cv2.drawContours(image, [triangle_coords], 0, (blue, 0, red), -1)
+        # alternative rgb colorization
+        r, g, b = rgb(angle_degrees)
+        cv2.drawContours(image, [triangle_coords], 0, (b, g, r), -1)
 
 
+@jit(nopython=True)
 def rgb(value, minimum=0, maximum=90):
     """
     source: https://stackoverflow.com/questions/20792445/calculate-rgb-value-for-a-range-of-values-to-create-heat-map
@@ -163,21 +168,22 @@ def draw_landmarks(image, face_landmarks, list_roi):
     return image
 
 
+# @jit(nopython=True)  # , dtype="float64"
 def get_triangle_coords(image, landmarks, landmark_list):
     """
     Extracts the 2D pixel coordinates of the three landmarks that define a triangle on an input image. The function takes the image,
     a dictionary of landmark coordinates, and a list of landmark indices that define the vertices of the triangle.
 
     :param image: (numpy array): A 3D NumPy array representing the input image on which the triangle is defined.
-    :param landmarks: (dict): A dictionary where the keys are landmark indices, and the values are 3D coordinates (numpy arrays or lists) representing
-                              the landmarks' positions in space.
+    :param landmarks: (List): A List where the indices are the processed order of mediapipe landmark indices, and the values are 3D coordinates
+                              (numpy arrays or lists) representing the landmarks' positions in space.
     :param landmark_list: (list): A list containing three landmark indices that define the vertices of the triangle.
-                                  These indices must correspond to keys present in the 'landmarks' dictionary.
+                                  These indices must correspond to indices present in the 'landmarks' list.
     :return: triangle_coords: (numpy array): A 2D NumPy array containing the 2D pixel coordinates of the three landmarks that define the triangle. The array has shape (3, 2).
     """
 
     # Extract the coordinates of the three landmarks of the triangle
-    points = [landmarks[i] for i in landmark_list]
+    points = [landmarks[i] for i in landmark_list]  # np.array([landmarks[i] for i in landmark_list])
 
     # Convert the points to NumPy array for easier computation
     img_h, img_w = image.shape[:2]
@@ -534,7 +540,7 @@ def get_destination_path(video_file):
         # print("Created: " + destination_folder)
     else:
         # Create a new directory with the current timestamp to keep existing files
-        destination_folder = directory + time.strftime("%Y%m%d") + '_' + dataset_structure + "/"
+        destination_folder = directory + dataset_structure + '_' + datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S') + "/"
         if not os.path.exists(destination_folder):
             os.makedirs(destination_folder, exist_ok=True)
 
