@@ -264,8 +264,6 @@ def calculate_roi(results, image, threshold=90, constrain_roi=True, use_convex_h
     mask_right_cheek_roi = np.zeros((img_h, img_w), dtype=np.uint8)
     mask_outside_roi = np.zeros((img_h, img_w), dtype=np.uint8)
 
-    angle_degrees_dict = {}
-
     # define landmarks to be plotted
     if constrain_roi:
         forehead_roi = DEFINITION_FACEMASK.FOREHEAD_TESSELATION_LARGE
@@ -332,8 +330,6 @@ def calculate_roi(results, image, threshold=90, constrain_roi=True, use_convex_h
                     mesh_points_optimal_roi_.append(triangle_coords)
 
                     cv2.fillConvexPoly(mask_right_cheek_roi, triangle_coords, (255, 255, 255, cv2.LINE_AA))
-            else:
-                 angle_degrees_dict.update({str(triangle): angle_degrees})
 
         else:
             if check_acceptance(index, angle_degrees, angle_history, threshold): # angle_degrees < threshold:
@@ -361,14 +357,6 @@ def calculate_roi(results, image, threshold=90, constrain_roi=True, use_convex_h
         mask_eyes = helper.mask_eyes_out(mask_outside_roi, landmark_coords_xyz)
         # extract smallest interpolation angles and create new mask only including pixels with the same amount as mask_optimal_roi
         mask_outside_roi = extract_mask_outside_roi(img_h, img_w, interpolated_surface_normal_angles, mask_optimal_roi, mask_eyes, x_min, y_min)
-
-        # mask out eyes from isolated face image
-        # mask_eyes = helper.mask_eyes_out(mask_outside_roi, landmark_coords_xyz)
-        # mask_outside_roi = cv2.copyTo(mask_outside_roi, mask_eyes)
-
-        # mask out mask_optimal_roi from mask_outside_roi, so that the masks don't overlap after applying convexHull
-        # inv_mask_optimal_roi = cv2.bitwise_not(mask_optimal_roi)
-        # mask_outside_roi = cv2.bitwise_and(mask_outside_roi, inv_mask_optimal_roi)
 
         cv2.imshow('mask_optimal_roi', mask_optimal_roi)
         cv2.imshow('mask_outside_roi', mask_outside_roi)
@@ -449,12 +437,11 @@ def calculate_roi(results, image, threshold=90, constrain_roi=True, use_convex_h
 def extract_mask_outside_roi(img_h, img_w, interpolated_surface_normal_angles, mask_optimal_roi, mask_eyes, x_min, y_min):
     mask_interpolated_angles = subtract_optimal_roi_from_outside_roi(img_h, img_w, interpolated_surface_normal_angles, mask_optimal_roi, x_min, y_min)
 
-    # set all zero values to None, to find the actual lowest angles
-    # mask_interpolated_angles[mask_interpolated_angles == 0] = None
-
     mask_eyes = cv2.bitwise_not(mask_eyes, mask_eyes)
     mask_interpolated_angles = np.clip(mask_interpolated_angles - mask_eyes, 0, 255)
 
+    # set all zero values to None, to find the actual lowest angles
+    # mask_interpolated_angles[mask_interpolated_angles == 0] = None
     set_zeroes_to_none(mask_interpolated_angles)
 
     # find the indices of the smallest values with the same count of optimal_roi_area + mask_eyes_area
