@@ -489,6 +489,31 @@ def set_colorbar_ticks(interpolated_surface_normal_angles):
     return max_angle, min_angle, v
 
 
+# no jit possible
+def extract_mask_outside_roi(img_h, img_w, interpolated_surface_normal_angles, mask_optimal_roi, mask_eyes, x_min, y_min):
+    mask_interpolated_angles = subtract_optimal_roi_from_outside_roi(img_h, img_w, interpolated_surface_normal_angles, mask_optimal_roi, x_min, y_min)
+
+    mask_eyes = cv2.bitwise_not(mask_eyes, mask_eyes)
+    mask_interpolated_angles = np.clip(mask_interpolated_angles - mask_eyes, 0, 255)
+
+    # set all zero values to None, to find the actual lowest angles
+    mask_interpolated_angles[mask_interpolated_angles == 0] = None
+
+    # find the indices of the smallest values with the same count of optimal_roi_area
+    area = count_pixel_area(mask_optimal_roi)
+    flat_mask = mask_interpolated_angles.flatten()
+    indices_of_smallest = np.argpartition(flat_mask, area)[:area]
+
+    # in the new array set the values at the found indices to their original values and then to 255 to create a binary grayscale mask
+    rows, cols = np.unravel_index(indices_of_smallest, mask_interpolated_angles.shape)
+    mask_outside_roi = np.zeros_like(mask_interpolated_angles, dtype=np.uint8)
+    mask_outside_roi[rows, cols] = flat_mask[indices_of_smallest]
+    # mask_outside_roi[np.unravel_index(indices_of_smallest, mask_interpolated_angles.shape)] = flat_mask[indices_of_smallest]
+    mask_outside_roi[mask_outside_roi > 0] = 255
+
+    return mask_outside_roi
+
+
 @jit(nopython=True)
 def subtract_optimal_roi_from_outside_roi(img_h, img_w, interpolated_surface_normal_angles, mask_optimal_roi, x_min, y_min):
     """
