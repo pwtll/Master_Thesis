@@ -168,7 +168,7 @@ def draw_landmarks(image, face_landmarks, list_roi):
     return image
 
 
-# @jit(nopython=True)  # , dtype="float64"
+# no jit possible because of list iteration
 def get_triangle_coords(image, landmarks, landmark_list):
     """
     Extracts the 2D pixel coordinates of the three landmarks that define a triangle on an input image. The function takes the image,

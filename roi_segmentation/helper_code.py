@@ -3,7 +3,9 @@ import cv2
 import matplotlib.pyplot as plt
 
 from typing import List, Collection, NamedTuple
-from scipy.spatial import distance
+
+from matplotlib import colors as mcol, pyplot as plt, cm as cm
+from scipy.spatial import distance, Delaunay
 
 import roi_segmentation.DEFINITION_FACEMASK
 from numba import jit
@@ -21,7 +23,7 @@ def triangle_centroid(triangle):
     centroid = triangle_centroid(triangle)
     # centroid is now [0.33333333, 0.33333333]
 
-    :param triangle:  (numpy.ndarray): A 2D numpy array representing a triangle.
+    :param triangle: (numpy.ndarray): A 2D numpy array representing a triangle.
     :return: numpy.ndarray: A 1D numpy array representing the centroid of the triangle.
     """
     return np.mean(triangle, axis=0)
@@ -211,6 +213,325 @@ def resize_roi(img: np.ndarray, mesh_points: List[np.ndarray]) -> np.ndarray:
     return resized_image
 
 
+@jit(nopython=True)
+def check_acceptance(index, angle_degrees, angle_history, threshold=90):
+    """
+    Check whether a triangle with a given angle is accepted based on its previous angle data.
+    It calculates the mean angle and standard deviation of its previous angle values and checks if:
+    1. current angle is below the threshold
+    2. the triangle has appeared during the last 5 frames
+    3. the mean angle of the last 5 frames is below the angle threshold + one standard deviation of the mean (last_5_mean < threshold + last_5_std_dev)
+
+    :param index: (int): The index corresponding to the triangle in the DEFINITION_FACEMASK.FACE_MESH_TESSELATION
+    :param angle_degrees: (float): The surface reflectance angle of the current triangle in degrees
+    :param angle_history: (numpy.ndarray): An array storing the last 5 reflectance angles of the triangle
+    :param threshold:(int, optional, default=90): The angle threshold in degrees. Triangles with angles below this threshold will be included in the adaptive ROI
+    :return: bool: True if the triangle is accepted, False otherwise.
+    """
+
+    angle_history[index] = np.roll(angle_history[index], shift=-1)  # Shift the values to make room for the new angle
+    angle_history[index][-1] = angle_degrees  # Store the new angle in the array
+    mean_angle = np.mean(angle_history[index])
+    std_dev = np.std(angle_history[index])
+
+    # Check if there are no zero values in angle_history[index] (occurs at first initialization)
+    # and count how many past angle values are less than threshold + std_dev
+    # ToDo: verbessere past_appearance, sodass es die gleiche boolsche bedingung hat, wie die if-Abfrage zum Akzeptieren der Dreiecke
+    if np.count_nonzero(angle_history[index] == 0) == 0:
+        past_appearance = angle_history[index] < threshold + std_dev
+        # or (np.count_nonzero(angle_history[index][:-1] == 0) == 0 and np.mean(angle_history[index][:-1]) < threshold + np.std(angle_history[index][:-1]))
+        past_appearance_count = np.count_nonzero(past_appearance)
+    else:
+        past_appearance_count = 0
+
+    # accept triangle:
+    # if its angle is below threshold,
+    # or if it already appeared during the last 5 frames,
+    # or if its mean angle during the last 5 frames is below threshold
+    if angle_degrees < threshold \
+            or past_appearance_count > 0 \
+            or (np.count_nonzero(angle_history[index] == 0) == 0 and mean_angle < threshold + std_dev):
+        return True
+    return False
+
+
+def interpolate_surface_normal_angles_slow(centroid_coordinates, pixel_coordinates, surface_normal_angles, x_min, x_max):
+    # Perform Delaunay triangulation on the centroid coordinates.
+    tri = Delaunay(centroid_coordinates)
+    # Initialize an array to store the interpolated surface normal angles for each pixel.
+    interpolated_surface_normal_angles = np.zeros(len(pixel_coordinates), dtype=np.float64)
+    # Iterate through each pixel coordinate for interpolation.
+    for i, pixel_coord in enumerate(pixel_coordinates):
+        # Find the triangle that contains the current pixel using Delaunay triangulation.
+        simplex_index = tri.find_simplex(pixel_coord)
+
+        # ToDo: bei überlappenden Pixeln wegen zu großen Kopfdrehungen nur die niedrigeren Winkel nehmen
+        if simplex_index != -1:
+            # Get the vertices of the triangle that contains the pixel.
+            vertices = tri.simplices[simplex_index]
+
+            # Calculate the barycentric coordinates of the pixel within the triangle.
+            barycentric_coords = calc_barycentric_coords(pixel_coord, centroid_coordinates, vertices)
+
+            # Use the barycentric coordinates to interpolate the surface normal angle for the current pixel.
+            interpolated_angle = sum(barycentric_coords[i] * surface_normal_angles[vertices[i]] for i in range(3))
+
+            interpolated_surface_normal_angles[i] = interpolated_angle
+
+    interpolated_surface_normal_angles = np.reshape(interpolated_surface_normal_angles, (-1, x_max - x_min))
+    # interpolated_surface_normal_angles[interpolated_surface_normal_angles > 45] = 0
+    # interpolated_surface_normal_angles[interpolated_surface_normal_angles == 0] = None  # 0  # None
+
+    return interpolated_surface_normal_angles
+
+
+@jit(nopython=True)
+def calc_triangle_centroid_coordinates(triangle_centroid, img_w, img_h, x_min, y_min):
+    """
+    Calculate the coordinates of a triangle centroid relative to a specified bounding box.
+
+    This function takes the coordinates of a triangle centroid and adjusts them to be relative to a specified
+    bounding box defined by its minimum (x_min, y_min) coordinates. The resulting coordinates are suitable for
+    indexing within the bounding box.
+
+    Parameters:
+    - triangle_centroid (list): The original coordinates of the triangle centroid.
+    - img_w (int): The width of the image or bounding box.
+    - img_h (int): The height of the image or bounding box.
+    - x_min (int): The minimum x-coordinate of the bounding box.
+    - y_min (int): The minimum y-coordinate of the bounding box.
+
+    Returns:
+    - list: The adjusted coordinates of the triangle centroid relative to the bounding box.
+    """
+    triangle_centroid[0] = int(triangle_centroid[0] * img_w - x_min)
+    triangle_centroid[1] = int(triangle_centroid[1] * img_h - y_min)
+    return triangle_centroid[:2]
+
+
+@jit(nopython=True)
+def calc_barycentric_coords(pixel_coord, centroid_coordinates, vertices):
+    """
+    Calculate the barycentric coordinates of a pixel within a triangle.
+
+    Given a pixel's (x, y) coordinates, the coordinates of a triangle's vertices, and the triangle's centroid coordinates,
+    this function calculates the barycentric coordinates of the pixel within the triangle.
+
+    Parameters:
+    - pixel_coord (tuple): The (x, y) coordinates of the pixel.
+    - centroid_coordinates (numpy.ndarray): The (x, y) coordinates of the triangle's centroid.
+    - vertices (numpy.ndarray): The (x, y) coordinates of the triangle's vertices.
+
+    Returns:
+    - numpy.ndarray: The barycentric coordinates (alpha, beta, gamma) of the pixel within the triangle.
+    """
+    A = np.column_stack((centroid_coordinates[vertices], np.ones(3)))
+    b = np.array([pixel_coord[0], pixel_coord[1], 1], dtype="float64")
+
+    barycentric_coords = np.linalg.solve(A.T, b)
+
+    return barycentric_coords
+
+
+def interpolate_surface_normal_angles(centroid_coordinates, pixel_coordinates, surface_normal_angles, x_min, x_max):
+    """
+    Interpolate surface normal angles for all pixels in the face based on Delaunay triangulation.
+
+    This function calculates the interpolated surface normal angles for pixels within the face, bounded by the given x_min and x_max range.
+    Based on Delaunay triangulation of all triangles centroid coordinates and barycentric coordinates.
+
+    Parameters:
+    - centroid_coordinates (numpy.ndarray): Array containing the centroid coordinates of all face tesselation triangles
+    - pixel_coordinates (numpy.ndarray): Array of pixel coordinates to be interpolated
+    - surface_normal_angles (numpy.ndarray): Array of surface normal angles for each triangle.
+    - x_min (int): The minimum x-coordinate of the face bounding box
+    - x_max (int): The maximum x-coordinate of the face bounding box
+
+    Returns:
+    - numpy.ndarray: A 2D array containing the interpolated surface normal angles for each face pixel
+    """
+    # Perform Delaunay triangulation on the centroid coordinates.
+    tri = Delaunay(centroid_coordinates)
+
+    # Find the simplex (triangle) that contains each pixel using Delaunay.
+    simplex_indices = tri.find_simplex(pixel_coordinates)
+
+    # Find the vertices of the triangles
+    triangle_vertices = tri.simplices[simplex_indices]
+
+    # Calculate the barycentric coordinates for all pixels
+    barycentric_coords = np.array([calc_barycentric_coords(pixel_coord, centroid_coordinates, vertices)
+                                   for pixel_coord, vertices in zip(pixel_coordinates, triangle_vertices)])
+
+    # Interpolate the surface normal angles for all valid pixels
+    interpolated_angles = np.sum(barycentric_coords * surface_normal_angles[triangle_vertices], axis=1)
+
+    return reshape_interpolated_angles(interpolated_angles, simplex_indices, x_max, x_min)
+
+
+@jit(nopython=True)
+def reshape_interpolated_angles(interpolated_angles, simplex_indices, x_max, x_min):
+    """
+    Reshape the interpolated surface normal angles from flattened form into a 2D image like array with the width of (x_max-x_min)
+    The surface normal angles of invalid pixels outside of the face are set to zero.
+
+    Parameters:
+    - interpolated_angles (numpy.ndarray): The interpolated surface normal angles for pixels.
+    - simplex_indices (numpy.ndarray): Indices of the triangles containing each pixel.
+    - x_max (int): The maximum horizontal bound.
+    - x_min (int): The minimum horizontal bound.
+
+    Returns:
+    - numpy.ndarray: The reshaped array of interpolated surface normal angles for valid pixels.
+    """
+    # Filter out pixels that are outside all triangles
+    invalid_pixel_indices = simplex_indices == -1
+    interpolated_angles[invalid_pixel_indices] = 0
+
+    # Create the output array with shape (-1, x_max - x_min)
+    interpolated_surface_normal_angles = np.reshape(interpolated_angles, (-1, x_max - x_min))
+
+    return interpolated_surface_normal_angles
+
+
+def plot_interpolation_heatmap(interpolated_surface_normal_angles, xx, yy):
+    """
+    Plot a heatmap of interpolated surface normal angles with contour lines.
+
+    This function visualizes the interpolated surface normal angles using a heatmap and overlays contour lines at
+    15-degree intervals between 0° and 90°. It also adds a colorbar to represent the angle values.
+
+    Parameters:
+    - interpolated_surface_normal_angles (numpy.ndarray): The interpolated surface normal angles for pixels.
+    - xx (numpy.ndarray): X-coordinates of the pixel grid.
+    - yy (numpy.ndarray): Y-coordinates of the pixel grid.
+
+    Returns:
+    - None: This function displays the plot and does not return any values.
+    """
+    # Make a user-defined colormap (source: https://stackoverflow.com/questions/25748183/python-making-color-bar-that-runs-from-red-to-blue)
+    # cm1 = mcol.LinearSegmentedColormap.from_list("MyCmapName", ["r", "b"])
+    cm1 = mcol.LinearSegmentedColormap.from_list("MyCmapName", ["b", "g", "r"])
+
+    plt.imshow(interpolated_surface_normal_angles, cmap=cm1)  # , interpolation='nearest')    cmap='RdBu'    , cmap='seismic_r'
+    create_colorbar(cm1, interpolated_surface_normal_angles)
+
+    # plot contour lines each 15° between 0° to 90°
+    CS = plt.contour(xx, yy, interpolated_surface_normal_angles, np.arange(90, step=30), colors="k", linewidths=0.75)
+    plt.clabel(CS, inline=1, fontsize=10)
+
+    # plt.show()
+    plt.pause(.1)
+    plt.draw()
+    # plt.clf()
+
+
+def create_colorbar(cm1, interpolated_surface_normal_angles):
+    """
+    Create a colorbar representing surface normal angles.
+
+    This function generates a colorbar to represent the surface normal angles displayed in the heatmap.
+    It sets appropriate tick values and labels for the colorbar.
+
+    Parameters:
+    - cm1 (matplotlib.colors.Colormap): The colormap used for the heatmap.
+    - interpolated_surface_normal_angles (numpy.ndarray): The interpolated surface normal angles for pixels.
+
+    Returns:
+    - None: This function adds a colorbar to the current plot and does not return any values.
+    """
+    max_angle, min_angle, v = set_colorbar_ticks(interpolated_surface_normal_angles)
+
+    # Make a normalizer that will map the angle values from [0,90] -> [0,1]
+    cnorm = mcol.Normalize(vmin=min_angle, vmax=max_angle)
+    # Turn these into an object that can be used to map time values to colors and can be passed to plt.colorbar()
+    cpick = cm.ScalarMappable(norm=cnorm, cmap=cm1)
+    cpick.set_array([])
+
+    plt.colorbar(cpick, label="Surface normal angle (°)", ticks=v)
+    plt.axis('off')
+
+
+@jit(nopython=True)
+def set_colorbar_ticks(interpolated_surface_normal_angles):
+    """
+    Calculate and set appropriate ticks for the colorbar based on interpolated surface normal angles.
+
+    This function calculates suitable tick values for the colorbar based on the range of interpolated surface normal angles.
+    It aims to create evenly spaced ticks that cover the range while considering specific angle values between the min_angle and max_angle in 15° steps.
+
+    Parameters:
+    - interpolated_surface_normal_angles (array-like): The interpolated surface normal angles for pixels.
+
+    Returns:
+    - max_angle (float): The highest interpolated surface normal angle.
+    - min_angle (float): The lowest interpolated surface normal angle.
+    - v (numpy.ndarray): An array of tick values for the colorbar.
+    """
+    # get highest and lowest interpolated reflectance angles
+    min_angle = np.nanmin(interpolated_surface_normal_angles)
+    max_angle = np.nanmax(interpolated_surface_normal_angles)
+    # alternative set of ticks
+    # lin_start = round(min_angle+5, -1)
+    # lin_stop = 10 * math.floor(max_angle / 10)
+    # v = np.linspace(lin_start, lin_stop, int((lin_stop-lin_start)/10), endpoint=True)
+    # v = np.append(min_angle, v)
+    # v = np.append(v, max_angle)
+    # set ticks for colorbar
+    if min_angle < 15 - 5 and max_angle > 75 + 5:
+        v = np.array([min_angle, 15, 30, 45, 60, 75, max_angle])
+    elif min_angle < 15 - 5 and not max_angle > 75 + 5:
+        v = np.array([min_angle, 15, 30, 45, 60, max_angle])
+    elif not min_angle < 15 - 5 and max_angle > 75 + 5:
+        v = np.array([min_angle, 30, 45, 60, 75, max_angle])
+    elif not min_angle < 15 - 5 and not max_angle > 75 + 5:
+        v = np.array([min_angle, 30, 45, 60, max_angle])
+    return max_angle, min_angle, v
+
+
+@jit(nopython=True)
+def subtract_optimal_roi_from_outside_roi(img_h, img_w, interpolated_surface_normal_angles, mask_optimal_roi, x_min, y_min):
+    """
+    Copy the smaller interpolated_surface_normal_angles array into a larger image sized array at the specified coordinates.
+    Hereby ensure that the smaller interpolated_surface_normal_angles array gets sliced, if the face is partly outside of the image.
+    At the end, subtract the optimal ROI mask from the resulting outside ROI mask to ensure there are no overlaps between both masks.
+
+    This function takes the dimensions of an image, interpolated surface normal angles, an optimal ROI mask, and
+    coordinates (x_min, y_min) to create a new mask. It ensures the new mask fits within the image boundaries
+    and then subtracts the optimal ROI mask from it, effectively isolating the region outside the optimal ROI.
+
+    Parameters:
+    - img_h (int): The height of the image
+    - img_w (int): The width of the image
+    - interpolated_surface_normal_angles (numpy.ndarray): An array of interpolated surface normal angles
+    - mask_optimal_roi (numpy.ndarray): The mask of the optimal ROI
+    - x_min (int): The minimum x-coordinate for the position of the interpolated_surface_normal_angles array inside the new mask
+    - y_min (int): The minimum y-coordinate for the position of the interpolated_surface_normal_angles array inside the new mask
+
+    Returns:
+    - mask_interpolated_angles (numpy.ndarray): The resulting mask with the original image dimensions after subtracting the optimal ROI.
+    """
+    # Create the larger mask_interpolated_angles array filled with zeros
+    mask_interpolated_angles = np.zeros((img_h, img_w), dtype=interpolated_surface_normal_angles.dtype)
+
+    # ensure that y_max and x_max are always smaller than or equal to image dimensions
+    y_max = min(y_min + interpolated_surface_normal_angles.shape[0], img_h)
+    x_max = min(x_min + interpolated_surface_normal_angles.shape[1], img_w)
+
+    # ensure that y_min and x_min are always greater than or equal to 0
+    y_min = max(y_max - interpolated_surface_normal_angles.shape[0], 0)
+    x_min = max(x_max - interpolated_surface_normal_angles.shape[1], 0)
+
+    # Copy the smaller interpolated_surface_normal_angles array into the larger mask_interpolated_angles array at the specified coordinates
+    # slice interpolated_surface_normal_angles if face is partly outside of camera
+    mask_interpolated_angles[y_min:y_max, x_min:x_max] = interpolated_surface_normal_angles[:y_max-y_min, :x_max-x_min]
+
+    # subtract optimal_roi from outside_roi
+    mask_interpolated_angles = np.clip(mask_interpolated_angles - mask_optimal_roi, 0, 255)
+    # mask_interpolated_angles[np.isnan(mask_interpolated_angles)] = 0
+    return mask_interpolated_angles
+
+
 def get_bounding_box_coordinates(img: np.ndarray, results: NamedTuple) -> (int, int, int, int):
     """
     Processes an image and returns the minimum and maximum x and y coordinates of the bounding box of detected face.
@@ -240,6 +561,21 @@ def get_bounding_box_coordinates(img: np.ndarray, results: NamedTuple) -> (int, 
         # cv2.rectangle(img, (x_min, y_min), (x_max, y_max), (255, 255, 255), 2)
 
         return x_min, y_min, x_max, y_max
+
+
+@jit(nopython=True)
+def get_bounding_box_coordinates_mesh_points(mesh_points):
+    """
+    Returns the minimum and maximum x and y coordinates of the bounding box of detected face.
+    The bounding box is determined from the minimum and maximum occurring x and y values of the extracted ROI mesh points.
+
+    :param mesh_points (np.ndarray): Array of coordinates defining triangles of the extracted ROI.
+    :return: x_min, y_min, x_max, y_max: minimum and maximum coordinates of face bounding box as integers
+    """
+    x_min, x_max = mesh_points[:, :, 0].min(), mesh_points[:, :, 0].max()
+    y_min, y_max = mesh_points[:, :, 1].min(), mesh_points[:, :, 1].max()
+
+    return x_min, y_min, x_max, y_max
 
 
 # @jit(nopython=True)
@@ -717,5 +1053,3 @@ def calculate_brightness_shadow_ratio(frame):
     shadow_ratio = np.mean(shadow_mask)
 
     return frame_brightness, shadow_ratio
-
-
