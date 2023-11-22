@@ -1,12 +1,14 @@
 import cv2
 import matplotlib.pyplot as plt
 import mediapipe as mp
+import scipy.interpolate
 from numba import jit
 import numpy as np
 from scipy.spatial import Delaunay
 import matplotlib.colors as mcol
 import matplotlib.cm as cm
 
+import roi_segmentation.helper_code
 from roi_segmentation.DEFINITION_FACEMASK import FACE_MESH_TESSELATION
 import helper_functions
 
@@ -29,7 +31,7 @@ def calc_barycentric_coords(pixel_coord, centroid_coordinates, vertices):
     return barycentric_coords
 
 
-def plot_interpolation_heatmap(interpolated_surface_normal_angles, xx, yy):
+def plot_interpolation_heatmap_slow(interpolated_surface_normal_angles, xx, yy):
     # Make a user-defined colormap (source: https://stackoverflow.com/questions/25748183/python-making-color-bar-that-runs-from-red-to-blue)
     # cm1 = mcol.LinearSegmentedColormap.from_list("MyCmapName", ["r", "b"])
     cm1 = mcol.LinearSegmentedColormap.from_list("MyCmapName", ["b", "g", "r"])
@@ -45,6 +47,35 @@ def plot_interpolation_heatmap(interpolated_surface_normal_angles, xx, yy):
     plt.pause(.1)
     plt.draw()
     plt.clf()
+
+
+def interpolate_surface_normal_angles_scipy(centroid_coordinates, pixel_coordinates, surface_normal_angles, x_min, x_max):
+    """
+    Interpolate surface normal angles for all pixels in the face using scipy's griddata interpolation.
+
+    This function calculates the interpolated surface normal angles for pixels within the face, bounded by the given x_min and x_max range,
+    using scipy's griddata interpolation. In the end the interpolated surface normal angles are reshaped from flattened form into a 2D image like array
+    with the width of (x_max-x_min). The surface normal angles of pixels outside of the face are set to zero.
+
+    Parameters:
+    - centroid_coordinates (numpy.ndarray): Array containing the centroid coordinates of all face tesselation triangles
+    - pixel_coordinates (numpy.ndarray): Array of pixel coordinates to be interpolated
+    - surface_normal_angles (numpy.ndarray): Array of surface normal angles for each triangle.
+    - x_min (int): The minimum x-coordinate of the face bounding box
+    - x_max (int): The maximum x-coordinate of the face bounding box
+
+    Returns:
+    - numpy.ndarray: A 2D array containing the interpolated surface normal angles for each face pixel
+    """
+    # Create a meshgrid for centroid_coordinates
+    x_coords, y_coords = centroid_coordinates[:, 0], centroid_coordinates[:, 1]
+
+    # Perform griddata interpolation to obtain the interpolated angles
+    # The surface normal angles of invalid pixels outside of the face are set to zero
+    interpolated_angles = scipy.interpolate.griddata((x_coords, y_coords), surface_normal_angles, (pixel_coordinates[:, 0], pixel_coordinates[:, 1]), method='linear', fill_value=0)
+
+    # Reshape the interpolated surface normal angles from flattened form into a 2D image like array with the width of (x_max-x_min)
+    return np.reshape(interpolated_angles, (-1, x_max - x_min))
 
 
 def create_colorbar(cm1, interpolated_surface_normal_angles):
@@ -81,6 +112,32 @@ def set_colorbar_ticks(interpolated_surface_normal_angles):
     elif not min_angle < 15 - 5 and not max_angle > 75 + 5:
         v = np.array([min_angle, 30, 45, 60, max_angle])
     return max_angle, min_angle, v
+
+
+def iterate_points_as_spiral(size, start_x, start_y):
+    """
+    source: https://stackoverflow.com/questions/67404737/spiral-loop-for-image-pixel-analyze-x-y-c-sharp
+
+    :param size:
+    :return:
+    """
+    point = [size // 2 + start_x, size // 2 + start_y]
+
+    yield tuple(point)
+    sign = 1
+    for row in range(1, size):
+        # move right/left by row, and then up/down by row
+        for _ in range(row):
+            point[0] += sign * 1
+            yield tuple(point)
+        for _ in range(row):
+            point[1] -= sign * 1
+            yield tuple(point)
+        sign *= -1
+    # last leg to finish filling the area
+    for _ in range(size - 1):
+        point[0] += sign * 1
+        yield tuple(point)
 
 
 def main():
@@ -149,11 +206,13 @@ def main():
                     # Initialize an array to store the interpolated surface normal angles for each pixel.
                     interpolated_surface_normal_angles = np.zeros(len(pixel_coordinates), dtype=np.float64)
 
+                    '''old and slow method
                     # Iterate through each pixel coordinate for interpolation.
                     for i, pixel_coord in enumerate(pixel_coordinates):
                         # Find the triangle that contains the current pixel using Delaunay triangulation.
                         simplex_index = tri.find_simplex(pixel_coord)
 
+                        # ToDo: bei überlappenden Pixeln wegen zu großen Kopfdrehungen nur die niedrigeren Winkel nehmen
                         if simplex_index != -1:
                             # Get the vertices of the triangle that contains the pixel.
                             vertices = tri.simplices[simplex_index]
@@ -169,8 +228,12 @@ def main():
                 interpolated_surface_normal_angles = np.reshape(interpolated_surface_normal_angles, (-1, x_max - x_min))
                 # interpolated_surface_normal_angles[interpolated_surface_normal_angles > 45] = 0
                 interpolated_surface_normal_angles[interpolated_surface_normal_angles == 0] = None
+                '''
+                interpolated_surface_normal_angles = interpolate_surface_normal_angles_scipy(
+                    centroid_coordinates, pixel_coordinates, surface_normal_angles,
+                    x_min, x_max)
 
-                plot_interpolation_heatmap(interpolated_surface_normal_angles, xx, yy)
+                roi_segmentation.helper_code.plot_interpolation_heatmap(interpolated_surface_normal_angles, xx, yy)
                 # plot centroid triangulation
                 # Xi, Yi = centroid_coordinates[:, 0], centroid_coordinates[:, 1]
                 # plt.triplot(Xi, Yi, tri.simplices.copy())

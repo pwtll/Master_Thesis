@@ -1,3 +1,5 @@
+import time
+
 import cv2
 import mediapipe as mp
 from roi_segmentation.DEFINITION_FACEMASK import FACE_MESH_TESSELATION
@@ -7,9 +9,11 @@ import helper_functions
 def main():
     mp_face_mesh = mp.solutions.face_mesh
 
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    video_file = "g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/VIPL-HR-V1/data/p100/v2/source2/video.avi"
+
+    cap = cv2.VideoCapture(video_file) #, cv2.CAP_DSHOW)
+    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     with mp_face_mesh.FaceMesh(
             min_detection_confidence=0.5, min_tracking_confidence=0.5

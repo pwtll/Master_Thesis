@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 
 from typing import List, Collection, NamedTuple
 
+import scipy.interpolate
 from matplotlib import colors as mcol, pyplot as plt, cm as cm
 from scipy.spatial import distance, Delaunay
+from scipy.interpolate import griddata
 
 import roi_segmentation.DEFINITION_FACEMASK
 from numba import jit
@@ -95,7 +97,7 @@ def count_pixel_area_cv(mask_image):
     return cv2.countNonZero(thresholded_image)
 
 
-@jit(nopython=True)
+# no jit, because opencv code is faster than numpy and numba
 def count_pixel_area(mask_image):
     """
     Counts the pixel area of a masked image.
@@ -109,7 +111,7 @@ def count_pixel_area(mask_image):
     :return: int: The pixel area of the masked region.
     """
     # Count the non-black pixels
-    return np.count_nonzero(mask_image)
+    return cv2.countNonZero(mask_image)
 
 
 def mask_eyes_out(frame, landmark_coords_xyz):  # results):
@@ -394,6 +396,35 @@ def reshape_interpolated_angles(interpolated_angles, simplex_indices, x_max, x_m
     return interpolated_surface_normal_angles
 
 
+def interpolate_surface_normal_angles_scipy(centroid_coordinates, pixel_coordinates, surface_normal_angles, x_min, x_max):
+    """
+    Interpolate surface normal angles for all pixels in the face using scipy's griddata interpolation.
+
+    This function calculates the interpolated surface normal angles for pixels within the face, bounded by the given x_min and x_max range,
+    using scipy's griddata interpolation. In the end the interpolated surface normal angles are reshaped from flattened form into a 2D image like array
+    with the width of (x_max-x_min). The surface normal angles of pixels outside of the face are set to zero.
+
+    Parameters:
+    - centroid_coordinates (numpy.ndarray): Array containing the centroid coordinates of all face tesselation triangles
+    - pixel_coordinates (numpy.ndarray): Array of pixel coordinates to be interpolated
+    - surface_normal_angles (numpy.ndarray): Array of surface normal angles for each triangle.
+    - x_min (int): The minimum x-coordinate of the face bounding box
+    - x_max (int): The maximum x-coordinate of the face bounding box
+
+    Returns:
+    - numpy.ndarray: A 2D array containing the interpolated surface normal angles for each face pixel
+    """
+    # Create a meshgrid for centroid_coordinates
+    x_coords, y_coords = centroid_coordinates[:, 0], centroid_coordinates[:, 1]
+
+    # Perform griddata interpolation to obtain the interpolated angles
+    # The surface normal angles of invalid pixels outside of the face are set to zero
+    interpolated_angles = griddata((x_coords, y_coords), surface_normal_angles, (pixel_coordinates[:, 0], pixel_coordinates[:, 1]), method='linear', fill_value=0)
+
+    # Reshape the interpolated surface normal angles from flattened form into a 2D image like array with the width of (x_max-x_min)
+    return np.reshape(interpolated_angles, (-1, x_max - x_min))
+
+
 def plot_interpolation_heatmap(interpolated_surface_normal_angles, xx, yy):
     """
     Plot a heatmap of interpolated surface normal angles with contour lines.
@@ -416,9 +447,9 @@ def plot_interpolation_heatmap(interpolated_surface_normal_angles, xx, yy):
     plt.imshow(interpolated_surface_normal_angles, cmap=cm1)  # , interpolation='nearest')    cmap='RdBu'    , cmap='seismic_r'
     create_colorbar(cm1, interpolated_surface_normal_angles)
 
-    # plot contour lines each 15° between 0° to 90°
+    # plot contour lines each 30° between 0° to 90°
     CS = plt.contour(xx, yy, interpolated_surface_normal_angles, np.arange(90, step=30), colors="k", linewidths=0.75)
-    plt.clabel(CS, inline=1, fontsize=10)
+    plt.clabel(CS, inline=1, fontsize=12)
 
     # plt.show()
     plt.pause(.1)
@@ -448,7 +479,10 @@ def create_colorbar(cm1, interpolated_surface_normal_angles):
     cpick = cm.ScalarMappable(norm=cnorm, cmap=cm1)
     cpick.set_array([])
 
-    plt.colorbar(cpick, label="Surface normal angle (°)", ticks=v)
+    cbar = plt.colorbar(cpick, label="reflectance angle (°)", ticks=v)
+    cbar.set_label(label="reflectance angle (°)", size=14)  # , weight='bold')
+    ticklabs = cbar.ax.get_yticklabels()
+    cbar.ax.set_yticklabels(ticklabs, fontsize=14)
     plt.axis('off')
 
 
@@ -620,6 +654,82 @@ def get_bounding_box_coordinates_filtered(img: np.ndarray, landmark_coords_xyz_h
     y_min, y_max = int(landmark_coords_xyz_history[:, video_frame_count, 1].min() * img_h), int(landmark_coords_xyz_history[:, video_frame_count, 1].max() * img_h)
 
     return x_min, y_min, x_max, y_max
+
+
+def apply_bounding_box(output_roi_face, bb_offset, x_min, y_min, x_max, y_max):
+    """
+        Apply a bounding box to a given region of interest (ROI) image while ensuring the box stays within the frame.
+        The resulting ROI image is cropped to fit within the bounding box.
+
+        Parameters:
+        output_roi_face (numpy.ndarray): The input ROI image as a NumPy array
+        bb_offset (int): The offset to apply to the bounding box borders
+        x_max (int): The maximum x-coordinate of the bounding box
+        x_min (int): The minimum x-coordinate of the bounding box
+        y_max (int): The maximum y-coordinate of the bounding box
+        y_min (int): The minimum y-coordinate of the bounding box
+
+        Returns:
+        tuple: A tuple containing:
+            - output_roi_face (numpy.ndarray): The ROI image with the applied bounding box
+            - x_max_bb (int): The updated maximum x-coordinate of the bounding box
+            - x_min_bb (int): The updated minimum x-coordinate of the bounding box
+            - y_max_bb (int): The updated maximum y-coordinate of the bounding box
+            - y_min_bb (int): The updated minimum y-coordinate of the bounding box
+    """
+    distance_max = max(x_max - x_min, y_max - y_min)
+    y_min_bb = (y_min + y_max - distance_max) / 2 - bb_offset
+    y_max_bb = (y_min + y_max + distance_max) / 2 + bb_offset
+    x_min_bb = (x_min + x_max - distance_max) / 2 - bb_offset
+    x_max_bb = (x_min + x_max + distance_max) / 2 + bb_offset
+
+    x_shift, y_shift = 0, 0
+
+    # ensure that bounding box borders stay inside the frame
+    if y_min_bb < 0:
+        y_shift = abs(y_min_bb)
+        y_max_bb = y_max_bb - y_min_bb
+        y_min_bb = 0
+    if y_max_bb > output_roi_face.shape[0]:
+        y_shift = output_roi_face.shape[0] - y_max_bb
+        y_min_bb = y_min_bb - (y_max_bb - output_roi_face.shape[0])
+        y_max_bb = output_roi_face.shape[0]
+    if x_min_bb < 0:
+        x_shift = abs(x_min_bb)
+        x_max_bb = x_max_bb - x_min_bb
+        x_min_bb = 0
+    if x_max_bb > output_roi_face.shape[1]:
+        x_shift = output_roi_face.shape[1] - x_max_bb
+        x_min_bb = x_min_bb - (x_max_bb - output_roi_face.shape[1])
+        x_max_bb = output_roi_face.shape[1]
+
+    if x_min_bb > output_roi_face.shape[1]:
+        x_min_bb = output_roi_face.shape[1] - distance_max
+        x_max_bb = output_roi_face.shape[1]
+    if x_max_bb < distance_max:
+        x_min_bb = 0
+        x_max_bb = distance_max
+    if y_min_bb > output_roi_face.shape[0]:
+        y_min_bb = output_roi_face.shape[0] - distance_max
+        y_max_bb = output_roi_face.shape[0]
+    if y_max_bb < distance_max:
+        y_min_bb = 0
+        y_max_bb = distance_max
+
+    # crop roi bounding_box out of image
+    output_roi_face = output_roi_face[int(y_min_bb):int(y_max_bb), int(x_min_bb):int(x_max_bb)]
+
+    if x_shift != 0 or y_shift != 0:
+        # OpenCV image translation matrix
+        M = np.float32([[1, 0, x_shift], [0, 1, y_shift]])
+
+        # fill extracted ROI with black pixels if it's partly outside of image
+        # (= translate cropped output_roi_face by x_shift & y_shift)
+        shifted_roi_face = cv2.warpAffine(output_roi_face, M, (output_roi_face.shape[1], output_roi_face.shape[0]))
+
+        return shifted_roi_face, x_max_bb, x_min_bb, y_max_bb, y_min_bb
+    else:
+        return output_roi_face, x_max_bb, x_min_bb, y_max_bb, y_min_bb
 
 
 def calc_centroids(img: np.ndarray) -> (int, int):

@@ -56,10 +56,15 @@ def plot_fft(data, data_filt, sample_rate = 30, title='FFT of signal'):
     fft_result_filt = np.fft.fft(data_filt)
     freqs_filt = np.fft.fftfreq(len(fft_result_filt), 1 / sample_rate)
 
+    # set the font to Charter
+    font = {'family': 'serif', 'serif': ['Charter'], 'size': 12}
+    plt.rc('font', **font)
+
     plt.figure(figsize=(8, 6))
     plt.plot(freqs, np.abs(fft_result), 'tab:blue', label='FFT')
     plt.plot(freqs_filt, np.abs(fft_result_filt), 'tab:orange', alpha=0.5, label=('FFT of filtered signal'))
     # plt.xscale('log')
+    plt.yscale('log')
     plt.title(title)
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Magnitude')
@@ -163,8 +168,8 @@ with mp_face_mesh.FaceMesh(
                     x, y, z = landmark.x, landmark.y, landmark.z
                     landmark_coords_xyz_history[index].append((x, y, z))
 
-# define lowpass filter with 2.5 Hz cutoff frequency
-b, a = scipy.signal.iirfilter(20, Wn=2.9, fs=fs, btype="low", ftype="butter")
+# define lowpass filter with 3.0 Hz cutoff frequency
+b, a = scipy.signal.iirfilter(20, Wn=3, fs=fs, btype="low", ftype="butter")
 
 for idx in range(478):
     x_coords = [coords_xy[0] for coords_xy in landmark_coords_xyz_history[idx]]
