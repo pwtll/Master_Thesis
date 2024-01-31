@@ -1,3 +1,16 @@
+"""
+This script iterates through a specified dataset and generates a UV-map plot illustrating the average reflectance
+angles across the entire face tesselation of a single video.
+
+The UV-maps for all videos in the dataset get saved in folder: data/dataset_tesselation_angles/NAME_OF_DATASET
+    and keep the original dataset subfolder structure
+
+The computation is performed by averaging angles for each frame in a video.
+
+IMPORTANT:
+It is necessary to run this script before executing: dataset_mean_angle_tesselation_heatmap.py
+"""
+
 import os
 import time
 import cv2
@@ -28,7 +41,6 @@ def main(video_file=None, show_heatmap=False, threshold=90):
         else:
             cap = cv2.VideoCapture(example_video)
 
-    # ToDo: function
     uv_path = "uv_map.json"  # taken from https://github.com/spite/FaceMeshFaceGeometry/blob/353ee557bec1c8b55a5e46daf785b57df819812c/js/geometry.js
     uv_map_dict = json.load(open(uv_path))
     uv_map = np.array([(uv_map_dict["u"][str(i)], uv_map_dict["v"][str(i)]) for i in range(468)])
@@ -57,7 +69,6 @@ def main(video_file=None, show_heatmap=False, threshold=90):
                     for landmark in face_landmarks.landmark:
                         x, y, z = landmark.x, landmark.y, landmark.z
                         landmark_coords_xyz.append([x, y, z])
-                        # landmark_coords_uv.append(perspective_projection(x, y, z, fov=70, width=img_w, height=img_h))
 
                     # Calculate angles between camera and surface normal vectors for whole face mesh tessellation and draw an angle heatmap
                     angle_dict = {}         # to save angle of each mesh triangle in a dict

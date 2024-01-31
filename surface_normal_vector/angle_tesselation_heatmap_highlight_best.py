@@ -1,4 +1,8 @@
-import time
+"""
+This script provides a live demonstration of facial surface normal angles and plots the angles,
+which are highlighted as rgb color heatmap for each triangle in mediapipe's face tesselation.
+Additionally the ten smallest reflectance angles are highlighted with a grayscale.
+"""
 
 import cv2
 import mediapipe as mp
@@ -9,11 +13,9 @@ import helper_functions
 def main():
     mp_face_mesh = mp.solutions.face_mesh
 
-    video_file = "g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/VIPL-HR-V1/data/p100/v2/source2/video.avi"
+    video_file =  0    # "g:/Uni/_Master/Semester 9 (Master Thesis)/Datasets/VIPL-HR-V1/data/p100/v2/source2/video.avi"
 
-    cap = cv2.VideoCapture(video_file) #, cv2.CAP_DSHOW)
-    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap = cv2.VideoCapture(video_file)
 
     with mp_face_mesh.FaceMesh(
             min_detection_confidence=0.5, min_tracking_confidence=0.5
@@ -41,7 +43,7 @@ def main():
                     # save angle of each mesh triangle in a dict
                     angle_dict = {}
                     for triangle in FACE_MESH_TESSELATION:
-                        # draw_landmarks(image, face_landmarks, triangle)
+                        # helper_functions.draw_landmarks(image, face_landmarks, triangle)
 
                         # calculate reflectance angle in degree
                         angle_degrees = helper_functions.calculate_surface_normal_angle(landmarks, triangle)

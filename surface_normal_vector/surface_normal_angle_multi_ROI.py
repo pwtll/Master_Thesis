@@ -1,3 +1,8 @@
+"""
+This script is a basic demonstration to plot the surface normal vectors and their reflectance angles of some defined
+ROIs on the forehead and the cheek.
+"""
+
 import cv2
 import mediapipe as mp
 import numpy as np

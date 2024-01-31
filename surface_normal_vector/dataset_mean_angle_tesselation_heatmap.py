@@ -1,3 +1,15 @@
+"""
+This script generates a UV-map plot illustrating the average reflectance angles across the entire face tesselation.
+The computation is performed by averaging angles for each frame within each video in the specified dataset.
+
+IMPORTANT:
+It is necessary to run the preceding script: angle_tesselation_heatmap_to_uv_coords_process_dataset.py
+before for this script to function correctly. The processed reflectance angle files should be saved in folder:
+
+data/dataset_tesselation_angles/NAME_OF_DATASET
+"""
+
+
 import os
 import time
 import cv2
@@ -19,7 +31,6 @@ def main(dataset_path):
 
     tesselation_metrics = {}
 
-    # ToDo: iterate over dataset folder and compute an overall mean value of the reflectance angles of each triangle.
     file_paths = []
     for root, dirs, files in os.walk(dataset_path):
         for name in files:
@@ -48,7 +59,7 @@ def main(dataset_path):
     for triangle in FACE_MESH_TESSELATION:
         tesselation_angle_metrics[str(triangle)] = helper_functions.finalize(tesselation_metrics[str(triangle)])
         # save mean angle of each tesselation triangle in a dictionary
-        # angle_dict.update({str(triangle): tesselation_angle_metrics[str(triangle)][0]})
+        angle_dict.update({str(triangle): tesselation_angle_metrics[str(triangle)][0]})
 
     # plot a heatmap of the mean reflectance angles of the face tesselation using UV coordinates
     mean_angle_heatmap_uv = helper_functions.plot_mean_angle_heatmap_uv(tesselation_angle_metrics, uv_map, show_heatmap=True)

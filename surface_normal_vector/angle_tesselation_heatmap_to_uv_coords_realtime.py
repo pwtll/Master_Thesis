@@ -1,3 +1,8 @@
+"""
+This script calculated the reflectance angles of mediapipe's face tesselation and generates a UV-map plot
+illustrating the current reflectance in real time.
+"""
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -41,9 +46,6 @@ def main():
                     for landmark in face_landmarks.landmark:
                         x, y, z = landmark.x, landmark.y, landmark.z
                         landmark_coords_xyz.append([x, y, z])
-
-                        # landmark_coords_uv.append(perspective_projection(x, y, z, fov=70, width=img_w, height=img_h))
-
 
                     # Calculate angles between camera and surface normal vectors for whole face mesh tessellation
                     # save angle of each mesh triangle in a dict

@@ -36,6 +36,16 @@ def calculate_surface_normal(landmarks, landmark_list) -> np.ndarray:
 
 @jit(nopython=True)
 def get_surface_normal(points):
+    """
+        Calculates the surface normal vector for a triangle defined by three points in cartesian 3D space.
+        The function computes the vectors for two edges of the surface triangle and then calculates
+        the surface normal vector as the cross product of these two edges. The resulting surface normal
+        vector is normalized to obtain a unit vector.
+
+        :param points: (numpy.ndarray): A 2D array representing the three points of the triangle
+
+        :return: numpy.ndarray: A 1D array representing the calculated surface normal vector for the triangle
+        """
     # Calculate the vectors for two edges of the surface triangle
     v1 = points[0] - points[1]
     v2 = points[0] - points[2]
@@ -456,12 +466,6 @@ def plot_mean_angle_heatmap_uv(tesselation_angle_metrics, uv_map, show_heatmap=T
         plt.show()
 
     return imgplot
-
-
-'''
-def format_coord(x, y, z):
-    return "text_string_made_from({:.2f},{:.2f},{:.2f})".format(x, y, z)
-'''
 
 
 def get_video_paths_in_folder(dir):

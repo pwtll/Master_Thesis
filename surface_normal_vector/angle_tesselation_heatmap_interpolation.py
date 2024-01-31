@@ -1,3 +1,9 @@
+"""
+This script provides a live demonstration of facial surface normal angles and plots the angles,
+which are highlighted as rgb color heatmap for each triangle in mediapipe's face tesselation.
+Additionally the interpolated surface normal angles are calculated and displayed in real time.
+"""
+
 import cv2
 import matplotlib.pyplot as plt
 import mediapipe as mp
@@ -36,7 +42,7 @@ def plot_interpolation_heatmap_slow(interpolated_surface_normal_angles, xx, yy):
     # cm1 = mcol.LinearSegmentedColormap.from_list("MyCmapName", ["r", "b"])
     cm1 = mcol.LinearSegmentedColormap.from_list("MyCmapName", ["b", "g", "r"])
 
-    plt.imshow(interpolated_surface_normal_angles, cmap=cm1)  # , interpolation='nearest')    cmap='RdBu'    , cmap='seismic_r'
+    plt.imshow(interpolated_surface_normal_angles, cmap=cm1)  # , interpolation='nearest') , cmap='RdBu', cmap='seismic_r'
     create_colorbar(cm1, interpolated_surface_normal_angles)
 
     # plot contour lines each 15° between 0° to 90°
@@ -114,32 +120,6 @@ def set_colorbar_ticks(interpolated_surface_normal_angles):
     return max_angle, min_angle, v
 
 
-def iterate_points_as_spiral(size, start_x, start_y):
-    """
-    source: https://stackoverflow.com/questions/67404737/spiral-loop-for-image-pixel-analyze-x-y-c-sharp
-
-    :param size:
-    :return:
-    """
-    point = [size // 2 + start_x, size // 2 + start_y]
-
-    yield tuple(point)
-    sign = 1
-    for row in range(1, size):
-        # move right/left by row, and then up/down by row
-        for _ in range(row):
-            point[0] += sign * 1
-            yield tuple(point)
-        for _ in range(row):
-            point[1] -= sign * 1
-            yield tuple(point)
-        sign *= -1
-    # last leg to finish filling the area
-    for _ in range(size - 1):
-        point[0] += sign * 1
-        yield tuple(point)
-
-
 def main():
     mp_face_mesh = mp.solutions.face_mesh
 
@@ -195,18 +175,14 @@ def main():
                         triangle_centroid = np.mean(np.array([landmarks[i] for i in triangle]), axis=0)
                         calc_triangle_centroid_coordinates(index, triangle_centroid, centroid_coordinates, img_w, img_h, x_min, y_min)
 
-                        # triangle_centroid = np.mean(np.array([landmarks[i] for i in triangle]), axis=0)
-                        # triangle_centroid[0] = int(triangle_centroid[0] * img_w - x_min)
-                        # triangle_centroid[1] = int(triangle_centroid[1] * img_h - y_min)
-                        # centroid_coordinates[index] = triangle_centroid[:2]
                     centroid_coordinates = np.array(centroid_coordinates)
 
+                    '''old and slow method
                     # Perform Delaunay triangulation on the centroid coordinates.
                     tri = Delaunay(centroid_coordinates)
                     # Initialize an array to store the interpolated surface normal angles for each pixel.
                     interpolated_surface_normal_angles = np.zeros(len(pixel_coordinates), dtype=np.float64)
-
-                    '''old and slow method
+                    
                     # Iterate through each pixel coordinate for interpolation.
                     for i, pixel_coord in enumerate(pixel_coordinates):
                         # Find the triangle that contains the current pixel using Delaunay triangulation.
