@@ -1,7 +1,0 @@
-opencv-python~=4.8.1.78
-PyCameraList~=1.0.0
-pandas~=1.1.5
-matplotlib~=3.3.4
-pyserial~=3.5
-python-dateutil~=2.8.2
-numpy~=1.19.5
