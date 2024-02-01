@@ -36,20 +36,23 @@ from concurrent.futures import ThreadPoolExecutor
 pool = ThreadPoolExecutor()
 
 
-arduino_port = 'COM4'
-arduino_baudrate = 9600
-arduino_update_sent = False
-last_update_time = None
+use_arduino = False
 
-arduino = None
+if use_arduino:
+    arduino_port = 'COM4'
+    arduino_baudrate = 9600
+    arduino_update_sent = False
+    last_update_time = None
 
-try:
-    arduino = serial.Serial(arduino_port, arduino_baudrate)
-except Exception as e:
-    print(e)
+    arduino = None
+
+    try:
+        arduino = serial.Serial(arduino_port, arduino_baudrate)
+    except Exception as e:
+        print(e)
 
 serial_port = 'COM3'
-cam_id = 1
+cam_id = 0
 swap_camera_order = False
 cam_idx = [0, 1]
 use_sigma = False
@@ -582,7 +585,8 @@ def connect_cam():
     global start_time_rot
     rot_img = None
 
-    global arduino_update_sent, arduino
+    if use_arduino:
+        global arduino_update_sent, arduino
 
     update_sent = False
 
@@ -632,10 +636,11 @@ def connect_cam():
                 f_ = cv2.resize(frame, (round(w*r), round(h*r)))
                 if not start_time or not recording:
                     cv2.imshow('Logitech C930e', f_)
-                    arduino.write(1)
-                    # update_sent = False
+                    if use_arduino:
+                        arduino.write(1)
+                        # update_sent = False
                 else:
-                    if not update_sent:
+                    if use_arduino and not update_sent:
                         arduino.write(0)
                         arduino_update_sent = True
 
@@ -1071,13 +1076,16 @@ checked_sunlight.set(2)
 recording = False
 def b_record():
     # print(checked_skin_tone.get(), checked_gender.get(), checked_glasses.get(), checked_hair_cover.get(), checked_makeup.get())
-    global recording, arduino_update_sent
+    global recording
+    if use_arduino:
+        global arduino_update_sent
     if not (frames and time.time()-frames[-1][-1]<0.2):
         recording = False
         b1.config(text='start')
         return
     recording = not recording
-    arduino_update_sent = False
+    if use_arduino:
+        arduino_update_sent = False
     b1.config(text='start' if not recording else 'stop')
     if recording:
         try:
@@ -1282,37 +1290,6 @@ def record():
         recording = False
 t3 = threading.Thread(target=record, daemon=True)
 
-'''
-# ToDo: Light, Motion, Excercise, Skin Color, Gender, Glasses, Hair Cover, Makeup, Age
-lb15 = tk.Label(window, text='Light', font=('Times',15))
-lb15.place(x=0, y=410+diff)
-ck1_v_light = tk.StringVar()
-ck2_v_light = tk.StringVar()
-ck3_v_light = tk.StringVar()
-ck1_light = tk.Checkbutton(window, text='Ceiling', onvalue='1', offvalue='', variable=ck1_v_light)
-ck2_light = tk.Checkbutton(window, text='Additional', onvalue='1', offvalue='', variable=ck2_v_light)
-ck3_light = tk.Checkbutton(window, text='Sunlight', onvalue='1', offvalue='', variable=ck3_v_light)
-ck1_light.place(x=5, y=430+diff)
-ck2_light.place(x=65, y=430+diff)
-ck3_light.place(x=125, y=430+diff)
-ck1_light.select()
-ck3_light.select()
-
-lb16 = tk.Label(window, text='Motion', font=('Times',15))
-lb16.place(x=0, y=450+diff)
-ck1_v_light = tk.StringVar()
-ck2_v_light = tk.StringVar()
-ck3_v_light = tk.StringVar()
-ck1_light = tk.Checkbutton(window, text='Stationary', onvalue='1', offvalue='', variable=ck1_v_light)
-ck2_light = tk.Checkbutton(window, text='Translation', onvalue='1', offvalue='', variable=ck2_v_light)
-ck3_light = tk.Checkbutton(window, text='Rotation', onvalue='1', offvalue='', variable=ck3_v_light)
-ck1_light.place(x=5, y=470+diff)
-ck2_light.place(x=65, y=470+diff)
-ck3_light.place(x=125, y=470+diff)
-ck1_light.select()
-ck3_light.select()
-'''
-
 
 def update_arduino_display():
     global recording, arduino_update_sent
@@ -1332,36 +1309,15 @@ def update_arduino_display():
         else:
             arduino.write(1)
             arduino_update_sent = False
-        '''
-        if not arduino_update_sent:
-            if recording:
-                arduino.write(0)
-                #arduino.write('XXXX'.encode())
-                print("XXXX")
-            else:
-                subject_idx = text1.get()[2:]
-                scenario_idx = text2.get()[1:]
 
-                # if arduino_update_sent:
-                # arduino.write(f'{subject_idx}.{scenario_idx}'.encode())
-                arduino.write(1)
-                print(f'{subject_idx}.{scenario_idx}')
-            arduino_update_sent = True
-            last_update_time = time.time()
-        #else:
-        #    if recording:
-        #        arduino.write('XXXX'.encode())
-        #        print("XXXX")
-        if arduino_update_sent and time.time() - last_update_time >= 2:
-            arduino_update_sent = False
-        '''
 
 # t5 = threading.Thread(target=update_arduino_display, daemon=True)
 # t5.start()
 
 def f_lb():
     global res, fourcc, fps, save_fourcc, cam_id
-    global arduino_update_sent, arduino
+    if use_arduino:
+        global arduino_update_sent, arduino
     if bvp and time.time()-bvp[-1][-1]<0.2:
         lb2.config(text='√', font=('Times',10), fg='green')
     else:
@@ -1377,10 +1333,8 @@ def f_lb():
         #     arduino_update_sent = True
     else:
         lb9.config(text='×', font=('Times',10), fg='red')
-        arduino_update_sent = False
-        # if not arduino_update_sent:
-        # arduino.write(1)
-        #     arduino_update_sent = True
+        if use_arduino:
+            arduino_update_sent = False
 
     video_devices = [i[1] for i in list_video_devices()]
     c_list['values'] = video_devices
