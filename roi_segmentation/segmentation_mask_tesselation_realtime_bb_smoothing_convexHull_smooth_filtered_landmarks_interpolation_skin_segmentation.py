@@ -1,6 +1,6 @@
 """
 This script uses facial landmarks detected in a video file or live webcam feed to perform ROI segmentation
-based on specified parameters.
+based on specified parameters. Additionally, it includes a histogram-based skin segmentation.
 
 
 The parameters are:
@@ -21,7 +21,6 @@ The parameters are:
 
 """
 
-
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -30,9 +29,57 @@ import matplotlib.pyplot as plt
 
 import DEFINITION_FACEMASK
 import helper_code as helper
+import roi_segmentation.func_skin_segmentation
 from roi_segmentation.helper_code import calc_triangle_centroid_coordinates, check_acceptance, interpolate_surface_normal_angles, \
     extract_mask_outside_roi
 from surface_normal_vector import helper_functions
+
+
+def plot_histograms(r_channel, g_channel, b_channel, bins_b, bins_g, bins_r, hist_b, hist_g, hist_r):
+    global ax1, ax2, ax3
+
+    lower_threshold_r, upper_threshold_r, lower_threshold_g, upper_threshold_g, lower_threshold_b, upper_threshold_b = \
+        roi_segmentation.func_skin_segmentation.calc_histogram_tresholds(hist_r, hist_g, hist_b, bins_r, bins_g, bins_b)
+
+    r_channel[r_channel == 0] = np.nan
+    g_channel[g_channel == 0] = np.nan
+    b_channel[b_channel == 0] = np.nan
+
+    # Plot histogram for R channel
+    ax1.clear()
+    ax1.hist(r_channel.flatten(), bins=64, range=(0, 1), color='red', alpha=0.7)
+    #ax1.set_title('Histogram - Red Channel')
+    #ax1.set_xlabel('Normalized Pixel Intensity')
+    ax1.set_ylabel('Frequency')
+    # ax1.set_xlim(1/64, 1)
+    ax1.axvline(x=lower_threshold_r, color='red', linestyle='--')
+    ax1.axvline(x=upper_threshold_r, color='red', linestyle='--')
+
+    # Plot histogram for G channel
+    ax2.clear()
+    ax2.hist(g_channel.flatten(), bins=64, range=(0, 1), color='green', alpha=0.7)
+    #ax2.set_title('Histogram - Green Channel')
+    #ax2.set_xlabel('Normalized Pixel Intensity')
+    ax2.set_ylabel('Frequency')
+    # ax2.set_xlim(1 / 64, 1)
+    ax2.axvline(x=lower_threshold_g, color='red', linestyle='--')
+    ax2.axvline(x=upper_threshold_g, color='red', linestyle='--')
+
+    # Plot histogram for B channel
+    ax3.clear()
+    ax3.hist(b_channel.flatten(), bins=64, range=(0, 1), color='blue', alpha=0.7)
+    # ax3.set_title('Histogram - Blue Channel')
+    ax3.set_xlabel('Normalized Pixel Intensity')
+    ax3.set_ylabel('Frequency')
+    # ax3.set_xlim(1 / 64, 1)
+    ax3.axvline(x=lower_threshold_b, color='red', linestyle='--')
+    ax3.axvline(x=upper_threshold_b, color='red', linestyle='--')
+
+    plt.tight_layout()
+
+    plt.pause(0.05)
+    plt.draw()
+    fig.canvas.flush_events()
 
 
 def low_pass_filter_landmarks(video_file):
@@ -45,8 +92,8 @@ def low_pass_filter_landmarks(video_file):
     with mp_face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
-            min_detection_confidence=0.3,
-            min_tracking_confidence=0.3
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
     ) as face_mesh:
         while cap_filter.isOpened():
             success, frame = cap_filter.read()
@@ -231,7 +278,8 @@ def calculate_roi(results, image, threshold=90, roi_mode="optimal_roi", constrai
     if constrain_roi and use_outside_roi:
         interpolated_surface_normal_angles = helper.interpolate_surface_normal_angles_scipy(centroid_coordinates, pixel_coordinates, surface_normal_angles,
                                                                                             x_min, x_max)
-        # JUST FOR DEBUGGING: three lines below just for plotting heatmap
+
+        # JUST FOR DEBUGGING: lines below just for plotting heatmap
         interpolated_surface_normal_angles[interpolated_surface_normal_angles == 0] = None  # 0  # None
         plt.figure(1)
         plt.clf()
@@ -260,12 +308,11 @@ def main(video_file=None, fps=30, threshold=90, roi_mode="optimal_roi", use_conv
     if video_file != 0:
         landmark_coords_xyz_history = low_pass_filter_landmarks(video_file)
 
-
     with mp_face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
-            min_detection_confidence=0.3,
-            min_tracking_confidence=0.3
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
     ) as face_mesh:
         while cap.isOpened():
             success, frame = cap.read()
@@ -281,14 +328,23 @@ def main(video_file=None, fps=30, threshold=90, roi_mode="optimal_roi", use_conv
             results = face_mesh.process(rgb_frame)
 
             mask_roi = None
-            output_roi_face = None
 
             if results.multi_face_landmarks:
 
                 if video_frame_count % 1 == 0:
+                    for face_landmarks in results.multi_face_landmarks:
+                        face_mask = roi_segmentation.func_skin_segmentation.generate_face_mask(face_landmarks, frame)
+                        face_roi = cv2.bitwise_and(frame, frame, mask=face_mask)
+
+                        skin_segmentation_mask = roi_segmentation.func_skin_segmentation.skin_segmentation(face_roi)
+                        skin_segmented_face = cv2.bitwise_and(face_roi, face_roi, mask=skin_segmentation_mask)
+
+                        cv2.imshow('skin_segmentation_mask', skin_segmentation_mask)
+                        cv2.imshow('skin_segmentation', skin_segmented_face)
+
                     # define mesh points of each ROI if mesh triangles are below threshold
                     try:
-                        mesh_points_bounding_box_, mask_optimal_roi, mask_outside_roi = calculate_roi(results, frame,
+                        mesh_points_bounding_box_, mask_optimal_roi, mask_outside_roi = calculate_roi(results, skin_segmented_face,
                                                                                                       threshold=threshold,
                                                                                                       roi_mode=roi_mode,
                                                                                                       constrain_roi=constrain_roi,
@@ -296,35 +352,41 @@ def main(video_file=None, fps=30, threshold=90, roi_mode="optimal_roi", use_conv
                                                                                                       use_outside_roi=use_outside_roi)
                     except IndexError as ie:
                         print("IndexError: " + str(video_frame_count))
+                        print(str(ie))
 
                     mask_roi = mask_outside_roi if use_outside_roi else mask_optimal_roi + mask_outside_roi
-                    output_roi_face = cv2.copyTo(frame, mask_roi)
 
+                    output_roi_face = cv2.copyTo(skin_segmented_face, mask_roi)
+                    # cv2.polylines(output_roi_face, mesh_points_bounding_box_, True, (0, 255, 0), 1, cv2.LINE_AA)
+                    cv2.polylines(frame, mesh_points_bounding_box_, True, (0, 255, 0), 1, cv2.LINE_AA)
 
                     # crop frame to square bounding box. The margins are either the outermost mesh point coordinates or (filtered) landmark coordinates
                     # processing video
                     if video_file != 0:
-                        if video_frame_count < landmark_coords_xyz_history.shape[1]:
-                            # use interpolated pixel ROI
-                            if use_outside_roi:
-                                # use filtered landmarks for a smoothed bounding box when using outside ROI during video processing
+                        # use interpolated pixel ROI
+                        if use_outside_roi:
+                            # use filtered landmarks for a smoothed bounding box when using outside ROI during video processing
+                            x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates_filtered(output_roi_face, landmark_coords_xyz_history,
+                                                                                                      video_frame_count)
+                        else:
+                            if constrain_roi:
+                                # Use outermost coordinates of mesh points of the active ROI
+                                x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates_mesh_points(np.array(mesh_points_bounding_box_))
+                            else:
+                                # Use filtered landmarks for a smoothed bounding box of the whole face during video processing
                                 x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates_filtered(output_roi_face, landmark_coords_xyz_history,
                                                                                                           video_frame_count)
-                            else:
-                                if constrain_roi:
-                                    # Use outermost coordinates of mesh points of the active ROI
-                                    x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates_mesh_points(np.array(mesh_points_bounding_box_))
-                                else:
-                                    # Use filtered landmarks for a smoothed bounding box of the whole face during video processing
-                                    x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates_filtered(output_roi_face, landmark_coords_xyz_history,
-                                                                                                              video_frame_count)
-                        else:
-                            pass
                     # processing real time webcam recording
                     else:
                         if roi_mode == "optimal_roi":
-                            # Use outermost coordinates of mediapipe landmarks to create a bounding box during real time webcam recording
-                            x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates(output_roi_face, results)
+                            # Use outermost coordinates of mediapipe landmarks to create a bounding box during
+                            # real time webcam recording
+                            if constrain_roi:
+                                x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates_mesh_points(
+                                        np.array(mesh_points_bounding_box_))
+                            else:
+                                x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates(output_roi_face,
+                                                                                                 results)
                         else:
                             # Use outermost coordinates of mesh points of the active ROI
                             x_min, y_min, x_max, y_max = helper.get_bounding_box_coordinates_mesh_points(
@@ -335,11 +397,6 @@ def main(video_file=None, fps=30, threshold=90, roi_mode="optimal_roi", use_conv
                                                                                                         bb_offset,
                                                                                                         x_min, y_min,
                                                                                                         x_max, y_max)
-                    output_mask, x_max_bb, x_min_bb, y_max_bb, y_min_bb = helper.apply_bounding_box(mask_roi,
-                                                                                                        bb_offset,
-                                                                                                        x_min, y_min,
-                                                                                                        x_max, y_max)
-
                 try:
                     output_roi_face = cv2.resize(output_roi_face, (256, 256), cv2.INTER_AREA)
                     cv2.imshow('ROI face', output_roi_face)
@@ -359,8 +416,9 @@ def main(video_file=None, fps=30, threshold=90, roi_mode="optimal_roi", use_conv
 
             cv2.imshow('img', frame)
             video_frame_count += 1
+            print(str(video_frame_count))
 
-            if cv2.waitKey(2) & 0xFF == 27:
+            if cv2.waitKey(40) & 0xFF == 27:
                 break
 
         cap.release()
@@ -370,14 +428,14 @@ def main(video_file=None, fps=30, threshold=90, roi_mode="optimal_roi", use_conv
 if __name__ == "__main__":
     video_file = 0      # choose 0 for live webcam video or define filepath of video file
 
-    # threshold angle in degrees. If the calculated angle is below this threshold, the heatmap will be drawn on the image
+    # threshold angle in degrees
     threshold = 90
 
     fps = 30
     # whether convexHull is applied to constrained ROI
     use_convex_hull = True
     # whether to constrain the ROI selection to forehead, left_cheek, right_cheek or all three combined (optimal_roi).
-    # If False: take tesselation triangles which pass the test of acceptance (= below threshold or mean_angle < threshold + std_dev)
+    # If False: take tesselation triangles which pass the acceptance check (= below threshold or mean_angle < threshold + std_dev)
     constrain_roi = True
     # defines which ROI is extracted
     roi_mode = "optimal_roi"  # choose between [ "optimal_roi", "forehead", "left_cheek", "right_cheek"]
@@ -388,6 +446,10 @@ if __name__ == "__main__":
     landmark_coords_xyz_history = [[] for _ in np.arange(478)]
     angle_history = np.array([np.zeros(10) for _ in np.arange(len(DEFINITION_FACEMASK.FACE_MESH_TESSELATION))])
     was_visible = [np.zeros(5, dtype=bool) for _ in np.arange(len(DEFINITION_FACEMASK.FACE_MESH_TESSELATION))]
+
+    # Initialize the figure and subplots outside the function
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 7), sharex=True, sharey=True)
+    plt.ion()  # Activate interactive mode
 
     main(video_file=video_file,
          fps=fps,
