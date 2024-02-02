@@ -83,9 +83,9 @@ def calc_quartiles(bins, hist):
 
 @jit(nopython=True)
 def calc_histogram_tresholds(hist_r, hist_g, hist_b, bins_r, bins_g, bins_b):
-    # Find the bin with the maximum count for each channel.
-    # The first bin is neglected, as it contains all black pixels
-    # The last bin is neglected, as it contains all saturated white pixels
+    # find the bin with the maximum count for each channel.
+    # the first bin is neglected, as it contains all black pixels
+    # the last bin is neglected, as it contains all saturated white pixels
     max_bin_r = np.argmax(hist_r[1:-1]) + 1
     max_bin_g = np.argmax(hist_g[1:-1]) + 1
     max_bin_b = np.argmax(hist_b[1:-1]) + 1
@@ -94,13 +94,13 @@ def calc_histogram_tresholds(hist_r, hist_g, hist_b, bins_r, bins_g, bins_b):
     median_g, lower_quartile_g, upper_quartile_g = calc_quartiles(bins_g[1:-1], hist_g[1:-1])
     median_b, lower_quartile_b, upper_quartile_b = calc_quartiles(bins_b[1:-1], hist_b[1:-1])
 
-    # Define the range to include the maximum bin and neighboring bins
-    bin_range = 2  # int(0.10 * len(bins_r))  # Adjust this range as needed
+    # define the range to include the maximum bin and neighboring bins
+    bin_range = 2
 
-    # Define the threshold range for skin color for each channel
-    threshold_range = 0  # .15  # Adjust this threshold as needed
+    # define the threshold range for skin color for each channel
+    threshold_range = 0
 
-    # Calculate the lower and upper thresholds for R, G, and B channels
+    # calculate the lower and upper thresholds for R, G, and B channels
     upper_threshold_r = upper_quartile_r
     upper_threshold_g = upper_quartile_g
     upper_threshold_b = upper_quartile_b
